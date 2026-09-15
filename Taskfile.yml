@@ -11,3 +11,13 @@ tasks:
     desc: Run tests.
     cmds:
       - go test ./... -count=1 -race -cover
+
+  up:
+    desc: Create and start containers.
+    cmds:
+      - docker compose up -d --wait
+
+  down:
+    desc: Stop and remove containers, networks.
+    cmds:
+      - docker compose down

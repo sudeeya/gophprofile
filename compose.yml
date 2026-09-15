@@ -1,0 +1,8 @@
+services:
+  server:
+    container_name: server
+    build:
+      dockerfile: Dockerfile.server
+    env_file: .env.server
+    ports:
+      - "${SERVER_PORT}:${SERVER_PORT}"
