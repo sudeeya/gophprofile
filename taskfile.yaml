@@ -1,0 +1,13 @@
+version: '3'
+
+tasks:
+  build:
+    desc: Build server.
+    cmds:
+      - CGO_ENABLED=0 go build -o server cmd/server/main.go
+    silent: true
+
+  test:
+    desc: Run tests.
+    cmds:
+      - go test ./... -count=1 -race -cover
