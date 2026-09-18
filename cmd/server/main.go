@@ -21,7 +21,7 @@ func main() {
 }
 
 func run(ctx context.Context) error {
-	a, err := app.New()
+	a, err := app.New(ctx)
 	if err != nil {
 		return fmt.Errorf("new app: %w", err)
 	}

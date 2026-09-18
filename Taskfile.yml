@@ -1,23 +1,22 @@
 version: '3'
 
 tasks:
-  build:
-    desc: Build server.
-    cmds:
-      - CGO_ENABLED=0 go build -o server cmd/server/main.go
-    silent: true
-
   test:
     desc: Run tests.
     cmds:
       - go test ./... -count=1 -race -cover
 
-  up:
+  compose-build:
+    desc: Build or rebuild services.
+    cmds:
+      - docker compose build
+
+  compose-up:
     desc: Create and start containers.
     cmds:
       - docker compose up -d --wait
 
-  down:
+  compose-down:
     desc: Stop and remove containers, networks.
     cmds:
       - docker compose down

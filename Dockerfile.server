@@ -1,10 +1,10 @@
-FROM golang:1.27.1-alpine AS builder
+FROM golang:1.27.1-alpine3.24 AS builder
 WORKDIR /app
 COPY . .
 RUN go mod download
-RUN go build -o server ./cmd/server/main.go
+RUN CGO_ENABLED=0 go build -o server ./cmd/server/main.go
 
-FROM gcr.io/distroless/static-debian13
+FROM gcr.io/distroless/static-debian13:nonroot
 WORKDIR /app
 COPY --from=builder /app/server .
-ENTRYPOINT ["./server"]
+ENTRYPOINT ["/app/server"]
