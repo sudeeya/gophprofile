@@ -4,10 +4,12 @@ go 1.27.1
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
+	github.com/avast/retry-go/v5 v5.0.0
 	github.com/caarlos0/env/v11 v11.4.1
 	github.com/jackc/pgx/v5 v5.11.0
 	github.com/labstack/echo/v5 v5.3.1
 	github.com/minio/minio-go/v7 v7.3.0
+	github.com/rabbitmq/amqp091-go v1.15.0
 )
 
 require (

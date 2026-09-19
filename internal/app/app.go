@@ -10,9 +10,9 @@ import (
 
 	"github.com/labstack/echo/v5"
 
+	"github.com/sudeeya/gophprofile/internal/broker"
 	"github.com/sudeeya/gophprofile/internal/config"
 	"github.com/sudeeya/gophprofile/internal/handlers"
-	"github.com/sudeeya/gophprofile/internal/publisher"
 	"github.com/sudeeya/gophprofile/internal/repository"
 	"github.com/sudeeya/gophprofile/internal/services"
 	"github.com/sudeeya/gophprofile/internal/storage"
@@ -53,7 +53,12 @@ func New(ctx context.Context) (*App, error) {
 		return nil, fmt.Errorf("new minio: %w", err)
 	}
 
-	publisher, err := publisher.NewRabbitmq()
+	publisher, err := broker.NewRabbitmq(broker.RabbitmqPublisherConfig{
+		Host:     cfg.Rabbitmq.Host,
+		Port:     cfg.Rabbitmq.Port,
+		User:     cfg.Rabbitmq.User,
+		Password: cfg.Rabbitmq.Password,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("new rabbitmq: %w", err)
 	}

@@ -94,3 +94,11 @@ func (m *Minio) GetAvatar(ctx context.Context, key string) (GetAvatarOutput, err
 		Bytes: bytes,
 	}, nil
 }
+
+func (m *Minio) DeleteAvatar(ctx context.Context, key string) error {
+	if err := m.client.RemoveObject(ctx, "avatars", key, minio.RemoveObjectOptions{}); err != nil {
+		return fmt.Errorf("remove object: %w", err)
+	}
+
+	return nil
+}

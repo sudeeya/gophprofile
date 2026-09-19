@@ -3,9 +3,12 @@ package handlers
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/labstack/echo/v5"
 )
+
+const _healthcheckTimeout = 3 * time.Second
 
 type HealthHandler struct {
 	service HealthService
@@ -26,7 +29,10 @@ type HealthError struct {
 }
 
 func (h *HealthHandler) Health(c *echo.Context) error {
-	if err := h.service.Ping(c.Request().Context()); err != nil {
+	tctx, tcancel := context.WithTimeout(c.Request().Context(), _healthcheckTimeout)
+	defer tcancel()
+
+	if err := h.service.Ping(tctx); err != nil {
 		return c.JSON(http.StatusServiceUnavailable, HealthError{
 			Error: "Not healthy",
 		})

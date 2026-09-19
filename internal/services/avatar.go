@@ -8,8 +8,8 @@ import (
 	"net/http"
 	"uuid"
 
+	"github.com/sudeeya/gophprofile/internal/broker"
 	"github.com/sudeeya/gophprofile/internal/domain"
-	"github.com/sudeeya/gophprofile/internal/publisher"
 	"github.com/sudeeya/gophprofile/internal/repository"
 	"github.com/sudeeya/gophprofile/internal/storage"
 )
@@ -38,10 +38,12 @@ type AvatarRepository interface {
 type AvatarStorage interface {
 	PutAvatar(ctx context.Context, input storage.PutAvatarInput) (storage.PutAvatarOutput, error)
 	GetAvatar(ctx context.Context, key string) (storage.GetAvatarOutput, error)
+	DeleteAvatar(ctx context.Context, key string) error
 }
 
 type AvatarEventPublisher interface {
-	Publish(ctx context.Context, event publisher.AvatarEvent) error
+	PublishAvatarUploadEvent(ctx context.Context, event broker.AvatarUploadEvent) error
+	PublishAvatarDeleteEvent(ctx context.Context, event broker.AvatarDeleteEvent) error
 }
 
 func NewAvatarService(repo AvatarRepository, storage AvatarStorage, publisher AvatarEventPublisher) *AvatarService {
@@ -95,9 +97,9 @@ func (s *AvatarService) UploadAvatar(ctx context.Context, input UploadAvatarInpu
 		return domain.Avatar{}, err
 	}
 
-	if err := s.publisher.Publish(ctx, publisher.AvatarEvent{
-		Type:     publisher.AvatarEventCreateThumbnails,
-		AvatarID: repoOutput.ID,
+	if err := s.publisher.PublishAvatarUploadEvent(ctx, broker.AvatarUploadEvent{
+		ID:    repoOutput.ID,
+		S3Key: storageOutput.Key,
 	}); err != nil {
 		return domain.Avatar{}, err
 	}
@@ -166,9 +168,8 @@ func (s *AvatarService) DeleteAvatar(ctx context.Context, input DeleteAvatarInpu
 		return err
 	}
 
-	if err := s.publisher.Publish(ctx, publisher.AvatarEvent{
-		Type:     publisher.AvatarEventDelete,
-		AvatarID: input.ID,
+	if err := s.publisher.PublishAvatarDeleteEvent(ctx, broker.AvatarDeleteEvent{
+		ID: input.ID,
 	}); err != nil {
 		return err
 	}
