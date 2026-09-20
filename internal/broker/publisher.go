@@ -27,7 +27,7 @@ type RabbitmqPublisher struct {
 	retrier *retry.Retrier
 }
 
-func NewRabbitmq(config RabbitmqPublisherConfig) (*RabbitmqPublisher, error) {
+func NewRabbitmqPublisher(config RabbitmqPublisherConfig) (*RabbitmqPublisher, error) {
 	u := url.URL{
 		Scheme: "amqp",
 		User:   url.UserPassword(config.User, config.Password),
@@ -48,24 +48,8 @@ func NewRabbitmq(config RabbitmqPublisherConfig) (*RabbitmqPublisher, error) {
 		return nil, fmt.Errorf("enable confirm: %w", err)
 	}
 
-	if err := ch.ExchangeDeclare(_exchange, "direct", true, false, false, false, nil); err != nil {
-		return nil, fmt.Errorf("declare exchange: %w", err)
-	}
-
-	if _, err := ch.QueueDeclare(_queueUpload, true, false, false, false, nil); err != nil {
-		return nil, fmt.Errorf("declare queue: %w", err)
-	}
-
-	if err := ch.QueueBind(_queueUpload, _keyUpload, _exchange, false, nil); err != nil {
-		return nil, fmt.Errorf("bind queue: %w", err)
-	}
-
-	if _, err := ch.QueueDeclare(_queueDelete, true, false, false, false, nil); err != nil {
-		return nil, fmt.Errorf("declare queue: %w", err)
-	}
-
-	if err := ch.QueueBind(_queueDelete, _keyDelete, _exchange, false, nil); err != nil {
-		return nil, fmt.Errorf("bind queue: %w", err)
+	if err := declareTopology(ch); err != nil {
+		return nil, fmt.Errorf("declare topology: %w", err)
 	}
 
 	retrier := retry.New(
@@ -100,7 +84,7 @@ func (r *RabbitmqPublisher) PublishAvatarUploadEvent(ctx context.Context, event 
 		return fmt.Errorf("marshal json: %w", err)
 	}
 
-	return r.publish(ctx, _exchange, _keyUpload, amqp.Publishing{
+	return r.publish(ctx, ExchangeAvatar, EventKeyAvatarUpload, amqp.Publishing{
 		DeliveryMode: amqp.Persistent,
 		ContentType:  "application/json",
 		Body:         body,
@@ -113,7 +97,7 @@ func (r *RabbitmqPublisher) PublishAvatarDeleteEvent(ctx context.Context, event 
 		return fmt.Errorf("marshal json: %w", err)
 	}
 
-	return r.publish(ctx, _exchange, _keyDelete, amqp.Publishing{
+	return r.publish(ctx, ExchangeAvatar, EventKeyAvatarDelete, amqp.Publishing{
 		DeliveryMode: amqp.Persistent,
 		ContentType:  "application/json",
 		Body:         body,

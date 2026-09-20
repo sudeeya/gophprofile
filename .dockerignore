@@ -1,6 +1,7 @@
-.env.*
+.env
 .git/
 .github/
 compose.yml
 Dockerfile.*
 Taskfile.yml
+*.md

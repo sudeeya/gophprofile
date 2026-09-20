@@ -24,11 +24,18 @@ type GetAvatarOutput struct {
 }
 
 type GetAvatarMetadataOutput struct {
-	ID        uuid.UUID
-	UserID    string
-	Filename  string
-	MimeType  string
-	Size      int
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID              uuid.UUID
+	UserID          string
+	Filename        string
+	MimeType        string
+	S3Key           string
+	ThumbnailS3Keys []string
+	Size            int
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+type AddThumbnailKeyInput struct {
+	AvatarID uuid.UUID
+	S3Key    string
 }

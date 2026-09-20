@@ -22,6 +22,12 @@ var _supportedAvatarFormats = map[string]struct{}{
 	"image/webp": {},
 }
 
+var _supportedAvatarFormatNames = map[string]struct{}{
+	"jpeg": {},
+	"png":  {},
+	"webp": {},
+}
+
 type AvatarService struct {
 	repo      AvatarRepository
 	storage   AvatarStorage
@@ -33,6 +39,7 @@ type AvatarRepository interface {
 	GetAvatar(ctx context.Context, id uuid.UUID) (repository.GetAvatarOutput, error)
 	GetAvatarMetadata(ctx context.Context, id uuid.UUID) (repository.GetAvatarMetadataOutput, error)
 	DeleteAvatar(ctx context.Context, id uuid.UUID) error
+	AddThumbnailKey(ctx context.Context, input repository.AddThumbnailKeyInput) error
 }
 
 type AvatarStorage interface {
@@ -83,7 +90,7 @@ func (s *AvatarService) UploadAvatar(ctx context.Context, input UploadAvatarInpu
 		Reader:      &buf,
 	})
 	if err != nil {
-		return domain.Avatar{}, err
+		return domain.Avatar{}, fmt.Errorf("put avatar: %w", err)
 	}
 
 	repoOutput, err := s.repo.CreateAvatar(ctx, repository.CreateAvatarInput{
@@ -94,14 +101,14 @@ func (s *AvatarService) UploadAvatar(ctx context.Context, input UploadAvatarInpu
 		Size:     size,
 	})
 	if err != nil {
-		return domain.Avatar{}, err
+		return domain.Avatar{}, fmt.Errorf("create avatar: %w", err)
 	}
 
 	if err := s.publisher.PublishAvatarUploadEvent(ctx, broker.AvatarUploadEvent{
 		ID:    repoOutput.ID,
 		S3Key: storageOutput.Key,
 	}); err != nil {
-		return domain.Avatar{}, err
+		return domain.Avatar{}, fmt.Errorf("publish event: %w", err)
 	}
 
 	return domain.Avatar{
@@ -116,12 +123,12 @@ func (s *AvatarService) UploadAvatar(ctx context.Context, input UploadAvatarInpu
 func (s *AvatarService) GetAvatar(ctx context.Context, id uuid.UUID) (domain.Avatar, error) {
 	repoOutput, err := s.repo.GetAvatar(ctx, id)
 	if err != nil {
-		return domain.Avatar{}, err
+		return domain.Avatar{}, fmt.Errorf("get avatar: %w", err)
 	}
 
 	storageOutput, err := s.storage.GetAvatar(ctx, repoOutput.S3Key)
 	if err != nil {
-		return domain.Avatar{}, err
+		return domain.Avatar{}, fmt.Errorf("get avatar: %w", err)
 	}
 
 	return domain.Avatar{
@@ -135,7 +142,7 @@ func (s *AvatarService) GetAvatar(ctx context.Context, id uuid.UUID) (domain.Ava
 func (s *AvatarService) GetAvatarMetadata(ctx context.Context, id uuid.UUID) (domain.Metadata, error) {
 	repoOutput, err := s.repo.GetAvatarMetadata(ctx, id)
 	if err != nil {
-		return domain.Metadata{}, err
+		return domain.Metadata{}, fmt.Errorf("get metadata: %w", err)
 	}
 
 	return domain.Metadata{
@@ -157,7 +164,7 @@ type DeleteAvatarInput struct {
 func (s *AvatarService) DeleteAvatar(ctx context.Context, input DeleteAvatarInput) error {
 	metadata, err := s.repo.GetAvatarMetadata(ctx, input.ID)
 	if err != nil {
-		return err
+		return fmt.Errorf("get metadata: %w", err)
 	}
 
 	if input.UserID != metadata.UserID {
@@ -165,13 +172,14 @@ func (s *AvatarService) DeleteAvatar(ctx context.Context, input DeleteAvatarInpu
 	}
 
 	if err := s.repo.DeleteAvatar(ctx, input.ID); err != nil {
-		return err
+		return fmt.Errorf("delete avatar: %w", err)
 	}
 
 	if err := s.publisher.PublishAvatarDeleteEvent(ctx, broker.AvatarDeleteEvent{
-		ID: input.ID,
+		ID:     input.ID,
+		S3Keys: append(metadata.ThumbnailS3Keys, metadata.S3Key),
 	}); err != nil {
-		return err
+		return fmt.Errorf("publish event: %w", err)
 	}
 
 	return nil

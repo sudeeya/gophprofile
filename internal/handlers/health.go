@@ -38,5 +38,5 @@ func (h *HealthHandler) Health(c *echo.Context) error {
 		})
 	}
 
-	return c.String(http.StatusOK, "Healthy")
+	return c.JSON(http.StatusOK, "Healthy")
 }

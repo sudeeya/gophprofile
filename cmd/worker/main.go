@@ -7,7 +7,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/sudeeya/gophprofile/internal/server/app"
+	"github.com/sudeeya/gophprofile/internal/worker/app"
 )
 
 func main() {

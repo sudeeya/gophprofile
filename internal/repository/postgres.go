@@ -97,7 +97,10 @@ func (p *Postgres) GetAvatar(ctx context.Context, id uuid.UUID) (GetAvatarOutput
 
 func (p *Postgres) GetAvatarMetadata(ctx context.Context, id uuid.UUID) (GetAvatarMetadataOutput, error) {
 	query, args, err := p.builder.
-		Select("id", "user_id", "file_name", "mime_type", "size_bytes", "created_at", "updated_at").
+		Select(
+			"id", "user_id", "file_name", "mime_type", "size_bytes",
+			"s3_key", "thumbnail_s3_keys", "created_at", "updated_at",
+		).
 		From("avatars").
 		Where("id = ? AND deleted_at IS NULL", id).
 		ToSql()
@@ -107,8 +110,8 @@ func (p *Postgres) GetAvatarMetadata(ctx context.Context, id uuid.UUID) (GetAvat
 
 	var output GetAvatarMetadataOutput
 	if err := p.pool.QueryRow(ctx, query, args...).Scan(
-		&output.ID, &output.UserID, &output.Filename, &output.MimeType,
-		&output.Size, &output.CreatedAt, &output.UpdatedAt,
+		&output.ID, &output.UserID, &output.Filename, &output.MimeType, &output.Size,
+		&output.S3Key, &output.ThumbnailS3Keys, &output.CreatedAt, &output.UpdatedAt,
 	); err != nil {
 		return GetAvatarMetadataOutput{}, fmt.Errorf("scan row: %w", err)
 	}
@@ -121,6 +124,23 @@ func (p *Postgres) DeleteAvatar(ctx context.Context, id uuid.UUID) error {
 		Update("avatars").
 		Set("deleted_at", squirrel.Expr("NOW()")).
 		Where("id = ? AND deleted_at IS NULL", id).
+		ToSql()
+	if err != nil {
+		return fmt.Errorf("build query: %w", err)
+	}
+
+	if _, err := p.pool.Exec(ctx, query, args...); err != nil {
+		return fmt.Errorf("exec query: %w", err)
+	}
+
+	return nil
+}
+
+func (p *Postgres) AddThumbnailKey(ctx context.Context, input AddThumbnailKeyInput) error {
+	query, args, err := p.builder.
+		Update("avatars").
+		Set("thumbnail_s3_keys", squirrel.Expr("thumbnail_s3_keys || to_jsonb(?::text)", input.S3Key)).
+		Where("id = ? AND deleted_at IS NULL", input.AvatarID).
 		ToSql()
 	if err != nil {
 		return fmt.Errorf("build query: %w", err)

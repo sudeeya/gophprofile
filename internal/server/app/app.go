@@ -9,11 +9,12 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v5"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/sudeeya/gophprofile/internal/broker"
-	"github.com/sudeeya/gophprofile/internal/config"
 	"github.com/sudeeya/gophprofile/internal/handlers"
 	"github.com/sudeeya/gophprofile/internal/repository"
+	"github.com/sudeeya/gophprofile/internal/server/config"
 	"github.com/sudeeya/gophprofile/internal/services"
 	"github.com/sudeeya/gophprofile/internal/storage"
 )
@@ -53,15 +54,18 @@ func New(ctx context.Context) (*App, error) {
 		return nil, fmt.Errorf("new minio: %w", err)
 	}
 
-	publisher, err := broker.NewRabbitmq(broker.RabbitmqPublisherConfig{
-		Host:     cfg.Rabbitmq.Host,
-		Port:     cfg.Rabbitmq.Port,
-		User:     cfg.Rabbitmq.User,
-		Password: cfg.Rabbitmq.Password,
+	publisher, err := broker.NewRabbitmqPublisher(broker.RabbitmqPublisherConfig{
+		Host:                           cfg.Rabbitmq.Host,
+		Port:                           cfg.Rabbitmq.Port,
+		User:                           cfg.Rabbitmq.User,
+		Password:                       cfg.Rabbitmq.Password,
+		PublisherConfirmsRetryDelay:    cfg.Rabbitmq.PublisherConfirmsRetryDelay,
+		PublisherConfirmsRetryAttempts: cfg.Rabbitmq.PublisherConfirmsRetryAttempts,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("new rabbitmq: %w", err)
+		return nil, fmt.Errorf("new rabbitmq publisher: %w", err)
 	}
+	closers = append(closers, publisher)
 
 	healthService := services.NewHealthService(repo, storage, publisher)
 	avatarService := services.NewAvatarService(repo, storage, publisher)
@@ -90,16 +94,17 @@ func New(ctx context.Context) (*App, error) {
 }
 
 func (a *App) Run(ctx context.Context) error {
-	errCh := make(chan error)
+	g, _ := errgroup.WithContext(ctx)
 
-	go func() {
-		errCh <- a.server.ListenAndServe()
-	}()
+	g.Go(func() error {
+		if err := a.server.ListenAndServe(); err != nil {
+			return fmt.Errorf("listen and serve: %w", err)
+		}
+		return nil
+	})
 
-	select {
-	case err := <-errCh:
-		return fmt.Errorf("listen and serve: %w", err)
-	case <-ctx.Done():
+	if err := g.Wait(); err != nil {
+		return err
 	}
 
 	tctx, tcancel := context.WithTimeout(context.Background(), a.cfg.Server.ShutdownTimeout)

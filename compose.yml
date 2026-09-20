@@ -70,6 +70,21 @@ services:
       rabbitmq:
         condition: service_healthy
 
+  worker:
+    container_name: worker
+    build:
+      dockerfile: Dockerfile.worker
+    env_file: .env
+    depends_on:
+      postgres: 
+        condition: service_healthy
+      goose:
+        condition: service_completed_successfully
+      minio:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
 volumes:
   postgres-data:
   minio_data:

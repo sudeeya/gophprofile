@@ -3,6 +3,7 @@ module github.com/sudeeya/gophprofile
 go 1.27.1
 
 require (
+	github.com/HugoSmits86/nativewebp v1.3.0
 	github.com/Masterminds/squirrel v1.5.4
 	github.com/avast/retry-go/v5 v5.0.0
 	github.com/caarlos0/env/v11 v11.4.1
@@ -10,6 +11,8 @@ require (
 	github.com/labstack/echo/v5 v5.3.1
 	github.com/minio/minio-go/v7 v7.3.0
 	github.com/rabbitmq/amqp091-go v1.15.0
+	golang.org/x/image v0.46.0
+	golang.org/x/sync v0.23.0
 )
 
 require (
@@ -34,7 +37,6 @@ require (
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/net v0.59.0 // indirect
-	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 	gopkg.in/ini.v1 v1.67.3 // indirect
