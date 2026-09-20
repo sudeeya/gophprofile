@@ -13,6 +13,8 @@ import (
 	"github.com/sudeeya/gophprofile/internal/services"
 )
 
+const UserIDHeaderKey = "X-User-ID"
+
 type AvatarService interface {
 	UploadAvatar(ctx context.Context, input services.UploadAvatarInput) (domain.Avatar, error)
 	GetAvatar(ctx context.Context, id uuid.UUID) (domain.Avatar, error)
@@ -43,7 +45,7 @@ type UploadAvatarError struct {
 }
 
 func (h *AvatarHandler) UploadAvatar(c *echo.Context) error {
-	userID := c.Request().Header.Get("X-User-ID")
+	userID := c.Request().Header.Get(UserIDHeaderKey)
 	if userID == "" {
 		return c.JSON(http.StatusBadRequest, UploadAvatarError{
 			Error: "Missing X-User-ID header",
