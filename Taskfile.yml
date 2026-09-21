@@ -1,0 +1,22 @@
+version: '3'
+
+tasks:
+  test:
+    desc: Run tests.
+    cmds:
+      - go test ./... -count=1 -race -cover
+
+  compose-build:
+    desc: Build or rebuild services.
+    cmds:
+      - docker compose build
+
+  compose-up:
+    desc: Create and start containers.
+    cmds:
+      - docker compose up -d --wait
+
+  compose-down:
+    desc: Stop and remove containers, networks.
+    cmds:
+      - docker compose down
