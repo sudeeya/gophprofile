@@ -19,6 +19,11 @@ import (
 	"github.com/sudeeya/gophprofile/internal/storage"
 )
 
+var _thumbnailSizes = []struct{ width, height int }{
+	{width: 100, height: 100},
+	{width: 300, height: 300},
+}
+
 type AvatarThumbnailService struct {
 	repo    AvatarRepository
 	storage AvatarStorage
@@ -52,24 +57,13 @@ func (s *AvatarThumbnailService) GenerateThumbnail(ctx context.Context, id uuid.
 		return fmt.Errorf("decode image: %w", err)
 	}
 
-	for _, size := range []struct {
-		width, height int
-	}{
-		{
-			width:  100,
-			height: 100,
-		},
-		{
-			width:  300,
-			height: 300,
-		},
-	} {
+	for _, size := range _thumbnailSizes {
 		var (
 			scaled = scaleImage(img, size.width, size.height)
 			buf    bytes.Buffer
 		)
 
-		if err := encdodeImage(&buf, scaled, format); err != nil {
+		if err := encodeImage(&buf, scaled, format); err != nil {
 			return fmt.Errorf("encode image: %w", err)
 		}
 
@@ -95,13 +89,9 @@ func (s *AvatarThumbnailService) GenerateThumbnail(ctx context.Context, id uuid.
 }
 
 func decodeImage(b []byte) (image.Image, string, error) {
-	_, format, err := image.DecodeConfig(bytes.NewReader(b))
+	_, _, err := image.DecodeConfig(bytes.NewReader(b))
 	if err != nil {
 		return nil, "", err
-	}
-
-	if _, ok := _supportedAvatarFormatNames[format]; !ok {
-		return nil, "", ErrFormatNotSupported
 	}
 
 	return image.Decode(bytes.NewReader(b))
@@ -113,7 +103,7 @@ func scaleImage(src image.Image, width, heigth int) image.Image {
 	return dst
 }
 
-func encdodeImage(w io.Writer, img image.Image, format string) error {
+func encodeImage(w io.Writer, img image.Image, format string) error {
 	switch format {
 	case "jpeg":
 		if err := jpeg.Encode(w, img, nil); err != nil {

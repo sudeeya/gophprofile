@@ -22,12 +22,6 @@ var _supportedAvatarFormats = map[string]struct{}{
 	"image/webp": {},
 }
 
-var _supportedAvatarFormatNames = map[string]struct{}{
-	"jpeg": {},
-	"png":  {},
-	"webp": {},
-}
-
 type AvatarService struct {
 	repo      AvatarRepository
 	storage   AvatarStorage

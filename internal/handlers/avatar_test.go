@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"bytes"
 	"errors"
 	"net/http"
 	"testing"
@@ -17,11 +18,11 @@ import (
 
 func TestUploadAvatar(t *testing.T) {
 	var (
-		contentJPEG         = echotest.LoadBytes(t, "testdata/cat.jpeg")
-		contentPNG          = echotest.LoadBytes(t, "testdata/cat.png")
-		contentWEBP         = echotest.LoadBytes(t, "testdata/cat.webp")
+		contentJPEG         = echotest.LoadBytes(t, "../testdata/cat.jpeg")
+		contentPNG          = echotest.LoadBytes(t, "../testdata/cat.png")
+		contentWEBP         = echotest.LoadBytes(t, "../testdata/cat.webp")
 		contentNotSupported = []byte("not supported")
-		contentTooLarge     = make([]byte, services.MaxAvatarSize+1)
+		contentTooLarge     = bytes.Repeat([]byte{'a'}, services.MaxAvatarSize+1)
 	)
 
 	tests := []struct {
@@ -220,26 +221,28 @@ func TestUploadAvatar(t *testing.T) {
 }
 
 func TestGetAvatar(t *testing.T) {
-	id := uuid.New()
-
 	tests := []struct {
 		name           string
-		config         echotest.ContextConfig
+		id             uuid.UUID
 		wantStatusCode int
-		setupMock      func(m *MockAvatarService)
+		newConfig      func(id uuid.UUID) echotest.ContextConfig
+		setupMock      func(m *MockAvatarService, id uuid.UUID)
 	}{
 		{
-			name: "success",
-			config: echotest.ContextConfig{
-				PathValues: echo.PathValues{
-					echo.PathValue{
-						Name:  "id",
-						Value: id.String(),
-					},
-				},
-			},
+			name:           "success",
+			id:             uuid.New(),
 			wantStatusCode: http.StatusOK,
-			setupMock: func(m *MockAvatarService) {
+			newConfig: func(id uuid.UUID) echotest.ContextConfig {
+				return echotest.ContextConfig{
+					PathValues: echo.PathValues{
+						echo.PathValue{
+							Name:  "id",
+							Value: id.String(),
+						},
+					},
+				}
+			},
+			setupMock: func(m *MockAvatarService, id uuid.UUID) {
 				m.EXPECT().
 					GetAvatar(mock.Anything, id).
 					Return(domain.Avatar{}, nil).
@@ -248,28 +251,33 @@ func TestGetAvatar(t *testing.T) {
 		},
 		{
 			name: "invalid id",
-			config: echotest.ContextConfig{
-				PathValues: echo.PathValues{
-					echo.PathValue{
-						Name:  "id",
-						Value: "0",
+			newConfig: func(_ uuid.UUID) echotest.ContextConfig {
+				return echotest.ContextConfig{
+					PathValues: echo.PathValues{
+						echo.PathValue{
+							Name:  "id",
+							Value: "0",
+						},
 					},
-				},
+				}
 			},
 			wantStatusCode: http.StatusBadRequest,
 		},
 		{
-			name: "not found",
-			config: echotest.ContextConfig{
-				PathValues: echo.PathValues{
-					echo.PathValue{
-						Name:  "id",
-						Value: id.String(),
-					},
-				},
-			},
+			name:           "not found",
+			id:             uuid.New(),
 			wantStatusCode: http.StatusNotFound,
-			setupMock: func(m *MockAvatarService) {
+			newConfig: func(id uuid.UUID) echotest.ContextConfig {
+				return echotest.ContextConfig{
+					PathValues: echo.PathValues{
+						echo.PathValue{
+							Name:  "id",
+							Value: id.String(),
+						},
+					},
+				}
+			},
+			setupMock: func(m *MockAvatarService, id uuid.UUID) {
 				m.EXPECT().
 					GetAvatar(mock.Anything, id).
 					Return(domain.Avatar{}, errors.New("not found")).
@@ -282,11 +290,11 @@ func TestGetAvatar(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			c, rec := tt.config.ToContextRecorder(t)
+			c, rec := tt.newConfig(tt.id).ToContextRecorder(t)
 
 			service := NewMockAvatarService(t)
 			if tt.setupMock != nil {
-				tt.setupMock(service)
+				tt.setupMock(service, tt.id)
 			}
 
 			handler := NewAvatarHandler(service)
@@ -298,26 +306,28 @@ func TestGetAvatar(t *testing.T) {
 }
 
 func TestGetAvatarMetadata(t *testing.T) {
-	id := uuid.New()
-
 	tests := []struct {
 		name           string
-		config         echotest.ContextConfig
+		id             uuid.UUID
 		wantStatusCode int
-		setupMock      func(m *MockAvatarService)
+		newConfig      func(id uuid.UUID) echotest.ContextConfig
+		setupMock      func(m *MockAvatarService, id uuid.UUID)
 	}{
 		{
-			name: "success",
-			config: echotest.ContextConfig{
-				PathValues: echo.PathValues{
-					echo.PathValue{
-						Name:  "id",
-						Value: id.String(),
-					},
-				},
-			},
+			name:           "success",
+			id:             uuid.New(),
 			wantStatusCode: http.StatusOK,
-			setupMock: func(m *MockAvatarService) {
+			newConfig: func(id uuid.UUID) echotest.ContextConfig {
+				return echotest.ContextConfig{
+					PathValues: echo.PathValues{
+						echo.PathValue{
+							Name:  "id",
+							Value: id.String(),
+						},
+					},
+				}
+			},
+			setupMock: func(m *MockAvatarService, id uuid.UUID) {
 				m.EXPECT().
 					GetAvatarMetadata(mock.Anything, id).
 					Return(domain.Metadata{}, nil).
@@ -325,29 +335,34 @@ func TestGetAvatarMetadata(t *testing.T) {
 			},
 		},
 		{
-			name: "invalid id",
-			config: echotest.ContextConfig{
-				PathValues: echo.PathValues{
-					echo.PathValue{
-						Name:  "id",
-						Value: "0",
-					},
-				},
-			},
+			name:           "invalid id",
 			wantStatusCode: http.StatusBadRequest,
+			newConfig: func(_ uuid.UUID) echotest.ContextConfig {
+				return echotest.ContextConfig{
+					PathValues: echo.PathValues{
+						echo.PathValue{
+							Name:  "id",
+							Value: "0",
+						},
+					},
+				}
+			},
 		},
 		{
-			name: "not found",
-			config: echotest.ContextConfig{
-				PathValues: echo.PathValues{
-					echo.PathValue{
-						Name:  "id",
-						Value: id.String(),
-					},
-				},
-			},
+			name:           "not found",
+			id:             uuid.New(),
 			wantStatusCode: http.StatusNotFound,
-			setupMock: func(m *MockAvatarService) {
+			newConfig: func(id uuid.UUID) echotest.ContextConfig {
+				return echotest.ContextConfig{
+					PathValues: echo.PathValues{
+						echo.PathValue{
+							Name:  "id",
+							Value: id.String(),
+						},
+					},
+				}
+			},
+			setupMock: func(m *MockAvatarService, id uuid.UUID) {
 				m.EXPECT().
 					GetAvatarMetadata(mock.Anything, id).
 					Return(domain.Metadata{}, errors.New("not found")).
@@ -360,11 +375,11 @@ func TestGetAvatarMetadata(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			c, rec := tt.config.ToContextRecorder(t)
+			c, rec := tt.newConfig(tt.id).ToContextRecorder(t)
 
 			service := NewMockAvatarService(t)
 			if tt.setupMock != nil {
-				tt.setupMock(service)
+				tt.setupMock(service, tt.id)
 			}
 
 			handler := NewAvatarHandler(service)
@@ -376,30 +391,35 @@ func TestGetAvatarMetadata(t *testing.T) {
 }
 
 func TestDeleteAvatar(t *testing.T) {
-	id := uuid.New()
-
 	tests := []struct {
 		name           string
-		config         echotest.ContextConfig
+		id             uuid.UUID
 		userID         string
 		wantStatusCode int
-		setupMock      func(m *MockAvatarService)
+		newConfig      func(id uuid.UUID) echotest.ContextConfig
+		setupMock      func(m *MockAvatarService, id uuid.UUID, userId string)
 	}{
 		{
-			name: "success",
-			config: echotest.ContextConfig{
-				PathValues: echo.PathValues{
-					echo.PathValue{
-						Name:  "id",
-						Value: id.String(),
-					},
-				},
-			},
+			name:           "success",
+			id:             uuid.New(),
 			userID:         "user",
 			wantStatusCode: http.StatusNoContent,
-			setupMock: func(m *MockAvatarService) {
+			newConfig: func(id uuid.UUID) echotest.ContextConfig {
+				return echotest.ContextConfig{
+					PathValues: echo.PathValues{
+						echo.PathValue{
+							Name:  "id",
+							Value: id.String(),
+						},
+					},
+				}
+			},
+			setupMock: func(m *MockAvatarService, id uuid.UUID, userId string) {
 				m.EXPECT().
-					DeleteAvatar(mock.Anything, mock.Anything).
+					DeleteAvatar(mock.Anything, services.DeleteAvatarInput{
+						ID:     id,
+						UserID: userId,
+					}).
 					Return(nil).
 					Once()
 			},
@@ -410,51 +430,65 @@ func TestDeleteAvatar(t *testing.T) {
 			wantStatusCode: http.StatusBadRequest,
 		},
 		{
-			name: "invalid id",
-			config: echotest.ContextConfig{
-				PathValues: echo.PathValues{
-					echo.PathValue{
-						Name:  "id",
-						Value: "0",
-					},
-				},
-			},
+			name:           "invalid id",
 			wantStatusCode: http.StatusBadRequest,
+			newConfig: func(_ uuid.UUID) echotest.ContextConfig {
+				return echotest.ContextConfig{
+					PathValues: echo.PathValues{
+						echo.PathValue{
+							Name:  "id",
+							Value: "0",
+						},
+					},
+				}
+			},
 		},
 		{
-			name: "forbidden",
-			config: echotest.ContextConfig{
-				PathValues: echo.PathValues{
-					echo.PathValue{
-						Name:  "id",
-						Value: id.String(),
-					},
-				},
-			},
+			name:           "forbidden",
+			id:             uuid.New(),
 			userID:         "user",
 			wantStatusCode: http.StatusForbidden,
-			setupMock: func(m *MockAvatarService) {
+			newConfig: func(id uuid.UUID) echotest.ContextConfig {
+				return echotest.ContextConfig{
+					PathValues: echo.PathValues{
+						echo.PathValue{
+							Name:  "id",
+							Value: id.String(),
+						},
+					},
+				}
+			},
+			setupMock: func(m *MockAvatarService, id uuid.UUID, userId string) {
 				m.EXPECT().
-					DeleteAvatar(mock.Anything, mock.Anything).
+					DeleteAvatar(mock.Anything, services.DeleteAvatarInput{
+						ID:     id,
+						UserID: userId,
+					}).
 					Return(services.ErrForbidden).
 					Once()
 			},
 		},
 		{
-			name: "internal service error",
-			config: echotest.ContextConfig{
-				PathValues: echo.PathValues{
-					echo.PathValue{
-						Name:  "id",
-						Value: id.String(),
-					},
-				},
-			},
+			name:           "internal service error",
+			id:             uuid.New(),
 			userID:         "user",
 			wantStatusCode: http.StatusInternalServerError,
-			setupMock: func(m *MockAvatarService) {
+			newConfig: func(id uuid.UUID) echotest.ContextConfig {
+				return echotest.ContextConfig{
+					PathValues: echo.PathValues{
+						echo.PathValue{
+							Name:  "id",
+							Value: id.String(),
+						},
+					},
+				}
+			},
+			setupMock: func(m *MockAvatarService, id uuid.UUID, userId string) {
 				m.EXPECT().
-					DeleteAvatar(mock.Anything, mock.Anything).
+					DeleteAvatar(mock.Anything, services.DeleteAvatarInput{
+						ID:     id,
+						UserID: userId,
+					}).
 					Return(errors.New("dummy")).
 					Once()
 			},
@@ -465,14 +499,19 @@ func TestDeleteAvatar(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			c, rec := tt.config.ToContextRecorder(t)
+			cfg := echotest.ContextConfig{}
+			if tt.newConfig != nil {
+				cfg = tt.newConfig(tt.id)
+			}
+
+			c, rec := cfg.ToContextRecorder(t)
 			if tt.userID != "" {
 				c.Request().Header.Set(UserIDHeaderKey, tt.userID)
 			}
 
 			service := NewMockAvatarService(t)
 			if tt.setupMock != nil {
-				tt.setupMock(service)
+				tt.setupMock(service, tt.id, tt.userID)
 			}
 
 			handler := NewAvatarHandler(service)
