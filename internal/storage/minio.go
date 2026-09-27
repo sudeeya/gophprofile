@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"uuid"
 
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"
@@ -28,13 +29,13 @@ func NewMinio(ctx context.Context, config MinioConfig) (*Minio, error) {
 		return nil, fmt.Errorf("new client: %w", err)
 	}
 
-	ok, err := client.BucketExists(ctx, "avatars")
+	ok, err := client.BucketExists(ctx, BucketAvatar)
 	if err != nil {
 		return nil, fmt.Errorf("check bucket: %w", err)
 	}
 
 	if !ok {
-		if err := client.MakeBucket(ctx, "avatars", minio.MakeBucketOptions{}); err != nil {
+		if err := client.MakeBucket(ctx, BucketAvatar, minio.MakeBucketOptions{}); err != nil {
 			return nil, err
 		}
 	}
@@ -66,7 +67,7 @@ func (m *Minio) Ping(ctx context.Context) error {
 }
 
 func (m *Minio) PutAvatar(ctx context.Context, input PutAvatarInput) (PutAvatarOutput, error) {
-	info, err := m.client.PutObject(ctx, "avatars", input.Filename, input.Reader, input.Size, minio.PutObjectOptions{
+	info, err := m.client.PutObject(ctx, BucketAvatar, uuid.New().String(), input.Reader, input.Size, minio.PutObjectOptions{
 		ContentType: input.ContentType,
 	})
 	if err != nil {
@@ -79,7 +80,7 @@ func (m *Minio) PutAvatar(ctx context.Context, input PutAvatarInput) (PutAvatarO
 }
 
 func (m *Minio) GetAvatar(ctx context.Context, key string) (GetAvatarOutput, error) {
-	object, err := m.client.GetObject(ctx, "avatars", key, minio.GetObjectOptions{})
+	object, err := m.client.GetObject(ctx, BucketAvatar, key, minio.GetObjectOptions{})
 	if err != nil {
 		return GetAvatarOutput{}, fmt.Errorf("get object: %w", err)
 	}
@@ -96,7 +97,7 @@ func (m *Minio) GetAvatar(ctx context.Context, key string) (GetAvatarOutput, err
 }
 
 func (m *Minio) DeleteAvatar(ctx context.Context, key string) error {
-	if err := m.client.RemoveObject(ctx, "avatars", key, minio.RemoveObjectOptions{}); err != nil {
+	if err := m.client.RemoveObject(ctx, BucketAvatar, key, minio.RemoveObjectOptions{}); err != nil {
 		return fmt.Errorf("remove object: %w", err)
 	}
 

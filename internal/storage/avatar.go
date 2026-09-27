@@ -2,6 +2,8 @@ package storage
 
 import "io"
 
+const BucketAvatar = "avatars"
+
 type PutAvatarInput struct {
 	Filename    string
 	ContentType string
