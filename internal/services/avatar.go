@@ -96,15 +96,14 @@ func (s *AvatarService) UploadAvatar(ctx context.Context, input UploadAvatarInpu
 		Size:     size,
 	})
 	if err != nil {
+		_ = s.storage.DeleteAvatar(ctx, storageOutput.Key)
 		return domain.Avatar{}, fmt.Errorf("create avatar: %w", err)
 	}
 
-	if err := s.publisher.PublishAvatarUploadEvent(ctx, broker.AvatarUploadEvent{
+	_ = s.publisher.PublishAvatarUploadEvent(ctx, broker.AvatarUploadEvent{
 		ID:    repoOutput.ID,
 		S3Key: storageOutput.Key,
-	}); err != nil {
-		return domain.Avatar{}, fmt.Errorf("publish event: %w", err)
-	}
+	})
 
 	return domain.Avatar{
 		Metadata: domain.Metadata{
