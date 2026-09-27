@@ -19,7 +19,7 @@ import (
 	"github.com/sudeeya/gophprofile/internal/storage"
 )
 
-var _thumbnailSizes = []struct{ width, height int }{
+var thumbnailSizes = []struct{ width, height int }{
 	{width: 100, height: 100},
 	{width: 300, height: 300},
 }
@@ -57,7 +57,7 @@ func (s *AvatarThumbnailService) GenerateThumbnail(ctx context.Context, id uuid.
 		return fmt.Errorf("decode image: %w", err)
 	}
 
-	for _, size := range _thumbnailSizes {
+	for _, size := range thumbnailSizes {
 		var (
 			scaled = scaleImage(img, size.width, size.height)
 			buf    bytes.Buffer

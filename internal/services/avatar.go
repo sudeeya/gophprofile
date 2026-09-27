@@ -16,7 +16,7 @@ import (
 
 const MaxAvatarSize = 10 * 1024 * 1024
 
-var _supportedAvatarFormats = map[string]struct{}{
+var supportedAvatarFormats = map[string]struct{}{
 	"image/jpeg": {},
 	"image/png":  {},
 	"image/webp": {},
@@ -73,7 +73,7 @@ func (s *AvatarService) UploadAvatar(ctx context.Context, input UploadAvatarInpu
 	}
 
 	contentType := http.DetectContentType(buf.Bytes())
-	if _, ok := _supportedAvatarFormats[contentType]; !ok {
+	if _, ok := supportedAvatarFormats[contentType]; !ok {
 		return domain.Avatar{}, ErrFormatNotSupported
 	}
 

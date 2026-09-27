@@ -42,7 +42,7 @@ func TestGenerateThumbnail(t *testing.T) {
 				m.EXPECT().
 					AddThumbnailKey(mock.Anything, mock.Anything).
 					Return(nil).
-					Times(len(_thumbnailSizes))
+					Times(len(thumbnailSizes))
 			},
 			setupStorageMock: func(m *MockAvatarStorage, key string) {
 				m.EXPECT().
@@ -52,7 +52,7 @@ func TestGenerateThumbnail(t *testing.T) {
 				m.EXPECT().
 					PutAvatar(mock.Anything, mock.Anything).
 					Return(storage.PutAvatarOutput{}, nil).
-					Times(len(_thumbnailSizes))
+					Times(len(thumbnailSizes))
 			},
 		},
 	}

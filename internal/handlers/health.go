@@ -8,7 +8,7 @@ import (
 	"github.com/labstack/echo/v5"
 )
 
-const _healthcheckTimeout = 3 * time.Second
+const healthcheckTimeout = 3 * time.Second
 
 type HealthHandler struct {
 	service HealthService
@@ -29,7 +29,7 @@ type HealthError struct {
 }
 
 func (h *HealthHandler) Health(c *echo.Context) error {
-	tctx, tcancel := context.WithTimeout(c.Request().Context(), _healthcheckTimeout)
+	tctx, tcancel := context.WithTimeout(c.Request().Context(), healthcheckTimeout)
 	defer tcancel()
 
 	if err := h.service.Ping(tctx); err != nil {
