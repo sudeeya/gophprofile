@@ -109,9 +109,14 @@ func (h *AvatarHandler) GetAvatar(c *echo.Context) error {
 	}
 
 	avatar, err := h.service.GetAvatar(c.Request().Context(), id)
-	if err != nil {
+	switch {
+	case errors.Is(err, services.ErrAvatarNotFound):
 		return c.JSON(http.StatusNotFound, GetAvatarError{
 			Error: "Not found",
+		})
+	case err != nil:
+		return c.JSON(http.StatusInternalServerError, UploadAvatarError{
+			Error: "Internal server error",
 		})
 	}
 
@@ -131,9 +136,14 @@ func (h *AvatarHandler) GetAvatarMetadata(c *echo.Context) error {
 	}
 
 	metadata, err := h.service.GetAvatarMetadata(c.Request().Context(), id)
-	if err != nil {
-		return c.JSON(http.StatusNotFound, GetAvatarMetadataError{
+	switch {
+	case errors.Is(err, services.ErrMetadataNotFound):
+		return c.JSON(http.StatusNotFound, GetAvatarError{
 			Error: "Not found",
+		})
+	case err != nil:
+		return c.JSON(http.StatusInternalServerError, UploadAvatarError{
+			Error: "Internal server error",
 		})
 	}
 

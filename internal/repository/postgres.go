@@ -2,12 +2,14 @@ package repository
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
 	"uuid"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -88,7 +90,11 @@ func (p *Postgres) GetAvatar(ctx context.Context, id uuid.UUID) (GetAvatarOutput
 	}
 
 	var output GetAvatarOutput
-	if err := p.pool.QueryRow(ctx, query, args...).Scan(&output.MimeType, &output.S3Key); err != nil {
+	err = p.pool.QueryRow(ctx, query, args...).Scan(&output.MimeType, &output.S3Key)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return GetAvatarOutput{}, ErrNotFound
+	case err != nil:
 		return GetAvatarOutput{}, fmt.Errorf("scan row: %w", err)
 	}
 
@@ -109,10 +115,14 @@ func (p *Postgres) GetAvatarMetadata(ctx context.Context, id uuid.UUID) (GetAvat
 	}
 
 	var output GetAvatarMetadataOutput
-	if err := p.pool.QueryRow(ctx, query, args...).Scan(
+	err = p.pool.QueryRow(ctx, query, args...).Scan(
 		&output.ID, &output.UserID, &output.Filename, &output.MimeType, &output.Size,
 		&output.S3Key, &output.ThumbnailS3Keys, &output.CreatedAt, &output.UpdatedAt,
-	); err != nil {
+	)
+	switch {
+	case errors.Is(err, pgx.ErrNoRows):
+		return GetAvatarMetadataOutput{}, ErrNotFound
+	case err != nil:
 		return GetAvatarMetadataOutput{}, fmt.Errorf("scan row: %w", err)
 	}
 

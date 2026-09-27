@@ -3,6 +3,7 @@ package services
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -116,7 +117,10 @@ func (s *AvatarService) UploadAvatar(ctx context.Context, input UploadAvatarInpu
 
 func (s *AvatarService) GetAvatar(ctx context.Context, id uuid.UUID) (domain.Avatar, error) {
 	repoOutput, err := s.repo.GetAvatar(ctx, id)
-	if err != nil {
+	switch {
+	case errors.Is(err, repository.ErrNotFound):
+		return domain.Avatar{}, ErrAvatarNotFound
+	case err != nil:
 		return domain.Avatar{}, fmt.Errorf("get avatar: %w", err)
 	}
 
@@ -135,7 +139,10 @@ func (s *AvatarService) GetAvatar(ctx context.Context, id uuid.UUID) (domain.Ava
 
 func (s *AvatarService) GetAvatarMetadata(ctx context.Context, id uuid.UUID) (domain.Metadata, error) {
 	repoOutput, err := s.repo.GetAvatarMetadata(ctx, id)
-	if err != nil {
+	switch {
+	case errors.Is(err, repository.ErrNotFound):
+		return domain.Metadata{}, ErrMetadataNotFound
+	case err != nil:
 		return domain.Metadata{}, fmt.Errorf("get metadata: %w", err)
 	}
 

@@ -280,7 +280,28 @@ func TestGetAvatar(t *testing.T) {
 			setupMock: func(m *MockAvatarService, id uuid.UUID) {
 				m.EXPECT().
 					GetAvatar(mock.Anything, id).
-					Return(domain.Avatar{}, errors.New("not found")).
+					Return(domain.Avatar{}, services.ErrAvatarNotFound).
+					Once()
+			},
+		},
+		{
+			name:           "internal service error",
+			id:             uuid.New(),
+			wantStatusCode: http.StatusInternalServerError,
+			newConfig: func(id uuid.UUID) echotest.ContextConfig {
+				return echotest.ContextConfig{
+					PathValues: echo.PathValues{
+						echo.PathValue{
+							Name:  "id",
+							Value: id.String(),
+						},
+					},
+				}
+			},
+			setupMock: func(m *MockAvatarService, id uuid.UUID) {
+				m.EXPECT().
+					GetAvatar(mock.Anything, id).
+					Return(domain.Avatar{}, errors.New("dummy")).
 					Once()
 			},
 		},
@@ -365,7 +386,28 @@ func TestGetAvatarMetadata(t *testing.T) {
 			setupMock: func(m *MockAvatarService, id uuid.UUID) {
 				m.EXPECT().
 					GetAvatarMetadata(mock.Anything, id).
-					Return(domain.Metadata{}, errors.New("not found")).
+					Return(domain.Metadata{}, services.ErrMetadataNotFound).
+					Once()
+			},
+		},
+		{
+			name:           "internal service error",
+			id:             uuid.New(),
+			wantStatusCode: http.StatusInternalServerError,
+			newConfig: func(id uuid.UUID) echotest.ContextConfig {
+				return echotest.ContextConfig{
+					PathValues: echo.PathValues{
+						echo.PathValue{
+							Name:  "id",
+							Value: id.String(),
+						},
+					},
+				}
+			},
+			setupMock: func(m *MockAvatarService, id uuid.UUID) {
+				m.EXPECT().
+					GetAvatarMetadata(mock.Anything, id).
+					Return(domain.Metadata{}, errors.New("dummy")).
 					Once()
 			},
 		},
