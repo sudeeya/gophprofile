@@ -85,6 +85,8 @@ services:
     build:
       dockerfile: Dockerfile.server
     env_file: .env
+    environment:
+      OTEL_SERVICE_NAME: server
     ports:
       - "8080:${SERVER_PORT}"
     depends_on:
@@ -104,6 +106,8 @@ services:
     build:
       dockerfile: Dockerfile.worker
     env_file: .env
+    environment:
+      OTEL_SERVICE_NAME: worker
     depends_on:
       postgres: 
         condition: service_healthy

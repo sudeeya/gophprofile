@@ -2,14 +2,20 @@ package config
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/caarlos0/env/v11"
 )
 
 type Config struct {
+	Worker   WorkerConfig
 	Postgres PostgresConfig
 	Minio    MinioConfig
 	Rabbitmq RabbitmqConfig
+}
+
+type WorkerConfig struct {
+	ShutdownTimeout time.Duration `env:"WORKER_SHUTDOWN_TIMEOUT,required"`
 }
 
 type PostgresConfig struct {

@@ -9,15 +9,11 @@ import (
 
 	echootel "github.com/labstack/echo-otel/v5"
 	"github.com/labstack/echo/v5"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
-	"go.opentelemetry.io/otel/propagation"
-	"go.opentelemetry.io/otel/sdk/resource"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/sudeeya/gophprofile/internal/broker"
 	"github.com/sudeeya/gophprofile/internal/handlers"
+	"github.com/sudeeya/gophprofile/internal/otel"
 	"github.com/sudeeya/gophprofile/internal/repository"
 	"github.com/sudeeya/gophprofile/internal/server/config"
 	"github.com/sudeeya/gophprofile/internal/services"
@@ -38,7 +34,7 @@ func New(ctx context.Context) (*App, error) {
 		return nil, fmt.Errorf("new config: %w", err)
 	}
 
-	stopTracerProvider, err := initTracerProvider(ctx)
+	stopTracerProvider, err := otel.InitTracerProvider(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("init tracer provider: %w", err)
 	}
@@ -148,34 +144,4 @@ func (a *App) Run(ctx context.Context) error {
 	}
 
 	return errors.Join(shutdownErrs...)
-}
-
-func initTracerProvider(ctx context.Context) (func(context.Context) error, error) {
-	exporter, err := otlptracegrpc.New(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("new exporter: %w", err)
-	}
-
-	res, err := resource.New(ctx,
-		resource.WithFromEnv(),
-		resource.WithTelemetrySDK(),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("new resource: %w", err)
-	}
-
-	tracerProvider := sdktrace.NewTracerProvider(
-		sdktrace.WithResource(res),
-		sdktrace.WithBatcher(exporter),
-		sdktrace.WithSampler(sdktrace.AlwaysSample()),
-	)
-
-	otel.SetTracerProvider(tracerProvider)
-
-	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
-		propagation.TraceContext{},
-		propagation.Baggage{},
-	))
-
-	return tracerProvider.Shutdown, nil
 }
