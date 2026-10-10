@@ -8,6 +8,10 @@ import (
 	"net/url"
 
 	amqp "github.com/rabbitmq/amqp091-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -21,6 +25,7 @@ type RabbitmqConsumerConfig struct {
 type RabbitmqConsumer struct {
 	conn          *amqp.Connection
 	subscriptions []subscription
+	tracer        trace.Tracer
 }
 
 type subscription struct {
@@ -49,8 +54,11 @@ func NewRabbitmqConsumer(config RabbitmqConsumerConfig) (*RabbitmqConsumer, erro
 		return nil, fmt.Errorf("declare topology: %w", err)
 	}
 
+	tracer := otel.Tracer("github.com/sudeeya/gophprofile/internal/broker")
+
 	return &RabbitmqConsumer{
-		conn: conn,
+		conn:   conn,
+		tracer: tracer,
 	}, nil
 }
 
@@ -102,20 +110,46 @@ func (r *RabbitmqConsumer) consume[T any](ctx context.Context, queue string, han
 			if !ok {
 				return nil
 			}
-
-			var event T
-			if err := json.Unmarshal(msg.Body, &event); err != nil {
-				_ = msg.Nack(false, false)
-				continue
-			}
-
-			if err := handler(ctx, event); err != nil {
-				_ = msg.Nack(false, false)
-			} else {
-				_ = msg.Ack(false)
-			}
+			r.handleMessage(ctx, queue, msg, handler)
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	}
+}
+
+func (r *RabbitmqConsumer) handleMessage[T any](ctx context.Context, queue string, msg amqp.Delivery, handler EventHandler[T]) {
+	ctx = otel.GetTextMapPropagator().Extract(ctx, AMQPTableCarrier{Table: msg.Headers})
+
+	var (
+		operation   = "receive"
+		destination = fmt.Sprintf("%s:%s", ExchangeAvatar, queue)
+		spanName    = fmt.Sprintf("%s %s", operation, destination)
+	)
+
+	ctx, span := r.tracer.Start(ctx, spanName,
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("messaging.system", "rabbitmq"),
+			attribute.String("messaging.operation.name", operation),
+			attribute.String("messaging.operation.type", "receive"),
+			attribute.String("messaging.destination.name", destination),
+			attribute.String("messaging.message.id", msg.MessageId),
+		),
+	)
+	defer span.End()
+
+	var event T
+	if err := json.Unmarshal(msg.Body, &event); err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		_ = msg.Nack(false, false)
+		return
+	}
+
+	if err := handler(ctx, event); err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		_ = msg.Nack(false, false)
+		return
+	}
+
+	_ = msg.Ack(false)
 }
