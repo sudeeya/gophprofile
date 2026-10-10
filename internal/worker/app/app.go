@@ -4,11 +4,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 
 	"golang.org/x/sync/errgroup"
 
 	"github.com/sudeeya/gophprofile/internal/broker"
+	"github.com/sudeeya/gophprofile/internal/otel"
 	"github.com/sudeeya/gophprofile/internal/repository"
 	"github.com/sudeeya/gophprofile/internal/services"
 	"github.com/sudeeya/gophprofile/internal/storage"
@@ -16,18 +16,29 @@ import (
 )
 
 type App struct {
-	cfg      config.Config
-	consumer *broker.RabbitmqConsumer
-	closers  []io.Closer
+	cfg             config.Config
+	consumer        *broker.RabbitmqConsumer
+	onShutdownFuncs []func(context.Context) error
 }
 
 func New(ctx context.Context) (*App, error) {
-	var closers []io.Closer
+	var onShutdownFuncs []func(context.Context) error
 
 	cfg, err := config.New()
 	if err != nil {
 		return nil, fmt.Errorf("new config: %w", err)
 	}
+
+	stopTracerProvider, err := otel.InitTracerProvider(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("init tracer provider: %w", err)
+	}
+	onShutdownFuncs = append(onShutdownFuncs, func(ctx context.Context) error {
+		if err := stopTracerProvider(ctx); err != nil {
+			return fmt.Errorf("stop tracer provider: %w", err)
+		}
+		return nil
+	})
 
 	repo, err := repository.NewPostgres(ctx, repository.PostgresConfig{
 		Host:     cfg.Postgres.Host,
@@ -39,7 +50,12 @@ func New(ctx context.Context) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("new postgres: %w", err)
 	}
-	closers = append(closers, repo)
+	onShutdownFuncs = append(onShutdownFuncs, func(_ context.Context) error {
+		if err := repo.Close(); err != nil {
+			return fmt.Errorf("close postgres: %w", err)
+		}
+		return nil
+	})
 
 	storage, err := storage.NewMinio(ctx, storage.MinioConfig{
 		Endpoint: cfg.Minio.Endpoint,
@@ -61,7 +77,12 @@ func New(ctx context.Context) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("new rabbitmq consumer: %w", err)
 	}
-	closers = append(closers, consumer)
+	onShutdownFuncs = append(onShutdownFuncs, func(_ context.Context) error {
+		if err := consumer.Close(); err != nil {
+			return fmt.Errorf("close consumer: %w", err)
+		}
+		return nil
+	})
 
 	consumer.Register(broker.QueueAvatarUpload, func(ctx context.Context, event broker.AvatarUploadEvent) error {
 		return thumbnailService.GenerateThumbnail(ctx, event.ID)
@@ -72,9 +93,9 @@ func New(ctx context.Context) (*App, error) {
 	})
 
 	return &App{
-		cfg:      cfg,
-		consumer: consumer,
-		closers:  closers,
+		cfg:             cfg,
+		consumer:        consumer,
+		onShutdownFuncs: onShutdownFuncs,
 	}, nil
 }
 
@@ -92,11 +113,14 @@ func (a *App) Run(ctx context.Context) error {
 		return err
 	}
 
-	var closeErrs []error
+	tctx, tcancel := context.WithTimeout(context.Background(), a.cfg.Worker.ShutdownTimeout)
+	defer tcancel()
 
-	for _, closer := range a.closers {
-		closeErrs = append(closeErrs, closer.Close())
+	var shutdownErrs []error
+
+	for _, f := range a.onShutdownFuncs {
+		shutdownErrs = append(shutdownErrs, f(tctx))
 	}
 
-	return errors.Join(closeErrs...)
+	return errors.Join(shutdownErrs...)
 }

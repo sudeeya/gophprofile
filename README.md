@@ -36,6 +36,9 @@ Web UI:
 - `RabbitMQ`: 
 
     http://localhost:15672, user:password
+- `Jaeger`: 
+
+    http://localhost:16686
 
 Stop containers:
 ```

@@ -53,11 +53,40 @@ services:
       timeout: 5s
       retries: 5
 
+  jaeger:
+    container_name: jaeger
+    image: jaegertracing/all-in-one:1.76.0
+    restart: always
+    ports:
+      - "14269:14269"
+      - "16686:16686"
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:14269" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  otel-collector:
+    container_name: otel-collector
+    image: otel/opentelemetry-collector-contrib:0.161.0
+    env_file: .env
+    restart: always
+    command: [ "--config=/etc/otel-collector-config.yaml" ]
+    volumes:
+      - ./otel-collector-config.yml:/etc/otel-collector-config.yaml
+    ports:
+      - "13133:13133"
+    depends_on:
+      jaeger:
+        condition: service_healthy
+
   server:
     container_name: server
     build:
       dockerfile: Dockerfile.server
     env_file: .env
+    environment:
+      OTEL_SERVICE_NAME: server
     ports:
       - "8080:${SERVER_PORT}"
     depends_on:
@@ -69,12 +98,16 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      jaeger:
+        condition: service_healthy
 
   worker:
     container_name: worker
     build:
       dockerfile: Dockerfile.worker
     env_file: .env
+    environment:
+      OTEL_SERVICE_NAME: worker
     depends_on:
       postgres: 
         condition: service_healthy
