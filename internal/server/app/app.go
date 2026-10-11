@@ -45,6 +45,17 @@ func New(ctx context.Context) (*App, error) {
 		return nil
 	})
 
+	stopMeterProvider, err := otel.InitMeterProvider(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("init meter provider: %w", err)
+	}
+	onShutdownFuncs = append(onShutdownFuncs, func(ctx context.Context) error {
+		if err := stopMeterProvider(ctx); err != nil {
+			return fmt.Errorf("stop meter provider: %w", err)
+		}
+		return nil
+	})
+
 	repo, err := repository.NewPostgres(ctx, repository.PostgresConfig{
 		Host:     cfg.Postgres.Host,
 		Port:     cfg.Postgres.Port,

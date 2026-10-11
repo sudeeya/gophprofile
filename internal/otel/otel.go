@@ -3,10 +3,13 @@ package otel
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
@@ -39,4 +42,32 @@ func InitTracerProvider(ctx context.Context) (func(context.Context) error, error
 	))
 
 	return tracerProvider.Shutdown, nil
+}
+
+func InitMeterProvider(ctx context.Context) (func(context.Context) error, error) {
+	exporter, err := otlpmetricgrpc.New(ctx, otlpmetricgrpc.WithInsecure())
+	if err != nil {
+		return nil, fmt.Errorf("new exporter: %w", err)
+	}
+
+	res, err := resource.New(ctx,
+		resource.WithFromEnv(),
+		resource.WithTelemetrySDK(),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("new resource: %w", err)
+	}
+
+	meterProvider := metric.NewMeterProvider(
+		metric.WithResource(res),
+		metric.WithReader(
+			metric.NewPeriodicReader(exporter,
+				metric.WithInterval(2*time.Second),
+			),
+		),
+	)
+
+	otel.SetMeterProvider(meterProvider)
+
+	return meterProvider.Shutdown, nil
 }
