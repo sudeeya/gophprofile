@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 	"uuid"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/sudeeya/gophprofile/internal/broker"
 	"github.com/sudeeya/gophprofile/internal/domain"
 	"github.com/sudeeya/gophprofile/internal/repository"
@@ -26,6 +29,31 @@ var supportedAvatarFormats = map[string]struct{}{
 	"image/png":  {},
 	"image/webp": {},
 }
+
+var (
+	uploadsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "avatars_uploads_total",
+			Help: "Total number of avatar uploads",
+		},
+		[]string{"status"},
+	)
+
+	uploadDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "avatars_upload_duration_seconds",
+			Help: "Avatar upload duration",
+		},
+		[]string{"status"},
+	)
+
+	storageUsage = promauto.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "avatars_storage_bytes",
+			Help: "Total storage used by avatars",
+		},
+	)
+)
 
 type AvatarService struct {
 	repo      AvatarRepository
@@ -70,7 +98,15 @@ type UploadAvatarInput struct {
 	Reader   io.Reader
 }
 
-func (s *AvatarService) UploadAvatar(ctx context.Context, input UploadAvatarInput) (domain.Avatar, error) {
+func (s *AvatarService) UploadAvatar(ctx context.Context, input UploadAvatarInput) (_ domain.Avatar, err error) {
+	start := time.Now()
+
+	defer func() {
+		status := classifyUploadError(err)
+		uploadsTotal.WithLabelValues(status).Inc()
+		uploadDuration.WithLabelValues(status).Observe(time.Since(start).Seconds())
+	}()
+
 	ctx, span := s.tracer.Start(ctx, "upload avatar",
 		trace.WithSpanKind(trace.SpanKindInternal),
 		trace.WithAttributes(
@@ -132,6 +168,8 @@ func (s *AvatarService) UploadAvatar(ctx context.Context, input UploadAvatarInpu
 		ID:    repoOutput.ID,
 		S3Key: storageOutput.Key,
 	})
+
+	storageUsage.Add(float64(size))
 
 	return domain.Avatar{
 		Metadata: domain.Metadata{
@@ -254,4 +292,17 @@ func (s *AvatarService) DeleteAvatar(ctx context.Context, input DeleteAvatarInpu
 	}
 
 	return nil
+}
+
+func classifyUploadError(err error) string {
+	switch {
+	case err == nil:
+		return "success"
+	case errors.Is(err, ErrAvatarTooLarge):
+		return "too_large"
+	case errors.Is(err, ErrFormatNotSupported):
+		return "format_not_supported"
+	default:
+		return "error"
+	}
 }

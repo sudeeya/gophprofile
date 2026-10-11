@@ -9,6 +9,7 @@ import (
 
 	echootel "github.com/labstack/echo-otel/v5"
 	"github.com/labstack/echo/v5"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/sync/errgroup"
 
 	"github.com/sudeeya/gophprofile/internal/broker"
@@ -109,6 +110,7 @@ func New(ctx context.Context) (*App, error) {
 	handler := echo.New()
 	handler.Use(echootel.NewMiddleware("server"))
 	handler.GET("/health", healthHandler.Health)
+	handler.GET("/metrics", echo.WrapHandler(promhttp.Handler()))
 	v1 := handler.Group("api/v1")
 	v1.POST("/avatars", avatarHandler.UploadAvatar)
 	v1.GET("/avatars/:id", avatarHandler.GetAvatar)
