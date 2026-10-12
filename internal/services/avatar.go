@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 	"uuid"
@@ -158,16 +159,26 @@ func (s *AvatarService) UploadAvatar(ctx context.Context, input UploadAvatarInpu
 	})
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
-		_ = s.storage.DeleteAvatar(ctx, storageOutput.Key)
+		if err := s.storage.DeleteAvatar(ctx, storageOutput.Key); err != nil {
+			slog.WarnContext(ctx, "failed to rollback avatar in storage",
+				slog.String("aws.s3.key", storageOutput.Key),
+				slog.Any("error", err),
+			)
+		}
 		return domain.Avatar{}, fmt.Errorf("create avatar: %w", err)
 	}
 
 	span.SetAttributes(attribute.String("avatar.id", repoOutput.ID.String()))
 
-	_ = s.publisher.PublishAvatarUploadEvent(ctx, broker.AvatarUploadEvent{
+	if err := s.publisher.PublishAvatarUploadEvent(ctx, broker.AvatarUploadEvent{
 		ID:    repoOutput.ID,
 		S3Key: storageOutput.Key,
-	})
+	}); err != nil {
+		slog.WarnContext(ctx, "failed to publish avatar upload event",
+			slog.String("avatar.id", repoOutput.ID.String()),
+			slog.Any("error", err),
+		)
+	}
 
 	storageUsage.Add(float64(size))
 

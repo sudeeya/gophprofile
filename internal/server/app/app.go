@@ -57,6 +57,17 @@ func New(ctx context.Context) (*App, error) {
 		return nil
 	})
 
+	stopLoggerProvider, err := otel.InitLoggerProvider(ctx, "server")
+	if err != nil {
+		return nil, fmt.Errorf("init logger provider: %w", err)
+	}
+	onShutdownFuncs = append(onShutdownFuncs, func(ctx context.Context) error {
+		if err := stopLoggerProvider(ctx); err != nil {
+			return fmt.Errorf("stop logger provider: %w", err)
+		}
+		return nil
+	})
+
 	repo, err := repository.NewPostgres(ctx, repository.PostgresConfig{
 		Host:     cfg.Postgres.Host,
 		Port:     cfg.Postgres.Port,
