@@ -39,6 +39,12 @@ Web UI:
 - `Jaeger`: 
 
     http://localhost:16686
+- `Prometheus`: 
+
+    http://localhost:9090
+- `Grafana`: 
+
+    http://localhost:3000, user:password
 
 Stop containers:
 ```
