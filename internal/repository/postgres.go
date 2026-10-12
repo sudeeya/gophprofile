@@ -11,6 +11,10 @@ import (
 	"github.com/Masterminds/squirrel"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type PostgresConfig struct {
@@ -24,6 +28,7 @@ type PostgresConfig struct {
 type Postgres struct {
 	pool    *pgxpool.Pool
 	builder squirrel.StatementBuilderType
+	tracer  trace.Tracer
 }
 
 func NewPostgres(ctx context.Context, config PostgresConfig) (*Postgres, error) {
@@ -45,9 +50,12 @@ func NewPostgres(ctx context.Context, config PostgresConfig) (*Postgres, error) 
 
 	builder := squirrel.StatementBuilder.PlaceholderFormat(squirrel.Dollar)
 
+	tracer := otel.Tracer("github.com/sudeeya/gophprofile/internal/repository")
+
 	return &Postgres{
 		pool:    pool,
 		builder: builder,
+		tracer:  tracer,
 	}, nil
 }
 
@@ -61,6 +69,16 @@ func (p *Postgres) Ping(ctx context.Context) error {
 }
 
 func (p *Postgres) CreateAvatar(ctx context.Context, input CreateAvatarInput) (CreateAvatarOutput, error) {
+	ctx, span := p.tracer.Start(ctx, "INSERT avatars",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("db.system.name", "postgresql"),
+			attribute.String("db.collection.name", "avatars"),
+			attribute.String("db.operation.name", "INSERT"),
+		),
+	)
+	defer span.End()
+
 	query, args, err := p.builder.
 		Insert("avatars").
 		Columns("user_id", "file_name", "mime_type", "s3_key", "size_bytes").
@@ -68,11 +86,13 @@ func (p *Postgres) CreateAvatar(ctx context.Context, input CreateAvatarInput) (C
 		Suffix("RETURNING id, created_at").
 		ToSql()
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return CreateAvatarOutput{}, fmt.Errorf("build query: %w", err)
 	}
 
 	var output CreateAvatarOutput
 	if err := p.pool.QueryRow(ctx, query, args...).Scan(&output.ID, &output.CreatedAt); err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return CreateAvatarOutput{}, fmt.Errorf("scan row: %w", err)
 	}
 
@@ -80,12 +100,23 @@ func (p *Postgres) CreateAvatar(ctx context.Context, input CreateAvatarInput) (C
 }
 
 func (p *Postgres) GetAvatar(ctx context.Context, id uuid.UUID) (GetAvatarOutput, error) {
+	ctx, span := p.tracer.Start(ctx, "SELECT avatars",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("db.system.name", "postgresql"),
+			attribute.String("db.collection.name", "avatars"),
+			attribute.String("db.operation.name", "SELECT"),
+		),
+	)
+	defer span.End()
+
 	query, args, err := p.builder.
 		Select("mime_type", "s3_key").
 		From("avatars").
 		Where("id = ? AND deleted_at IS NULL", id).
 		ToSql()
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return GetAvatarOutput{}, fmt.Errorf("build query: %w", err)
 	}
 
@@ -95,6 +126,7 @@ func (p *Postgres) GetAvatar(ctx context.Context, id uuid.UUID) (GetAvatarOutput
 	case errors.Is(err, pgx.ErrNoRows):
 		return GetAvatarOutput{}, ErrNotFound
 	case err != nil:
+		span.SetStatus(codes.Error, err.Error())
 		return GetAvatarOutput{}, fmt.Errorf("scan row: %w", err)
 	}
 
@@ -102,6 +134,16 @@ func (p *Postgres) GetAvatar(ctx context.Context, id uuid.UUID) (GetAvatarOutput
 }
 
 func (p *Postgres) GetAvatarMetadata(ctx context.Context, id uuid.UUID) (GetAvatarMetadataOutput, error) {
+	ctx, span := p.tracer.Start(ctx, "SELECT avatars",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("db.system.name", "postgresql"),
+			attribute.String("db.collection.name", "avatars"),
+			attribute.String("db.operation.name", "SELECT"),
+		),
+	)
+	defer span.End()
+
 	query, args, err := p.builder.
 		Select(
 			"id", "user_id", "file_name", "mime_type", "size_bytes",
@@ -111,6 +153,7 @@ func (p *Postgres) GetAvatarMetadata(ctx context.Context, id uuid.UUID) (GetAvat
 		Where("id = ? AND deleted_at IS NULL", id).
 		ToSql()
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return GetAvatarMetadataOutput{}, fmt.Errorf("build query: %w", err)
 	}
 
@@ -123,6 +166,7 @@ func (p *Postgres) GetAvatarMetadata(ctx context.Context, id uuid.UUID) (GetAvat
 	case errors.Is(err, pgx.ErrNoRows):
 		return GetAvatarMetadataOutput{}, ErrNotFound
 	case err != nil:
+		span.SetStatus(codes.Error, err.Error())
 		return GetAvatarMetadataOutput{}, fmt.Errorf("scan row: %w", err)
 	}
 
@@ -130,16 +174,28 @@ func (p *Postgres) GetAvatarMetadata(ctx context.Context, id uuid.UUID) (GetAvat
 }
 
 func (p *Postgres) DeleteAvatar(ctx context.Context, id uuid.UUID) error {
+	ctx, span := p.tracer.Start(ctx, "UPDATE avatars",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("db.system.name", "postgresql"),
+			attribute.String("db.collection.name", "avatars"),
+			attribute.String("db.operation.name", "UPDATE"),
+		),
+	)
+	defer span.End()
+
 	query, args, err := p.builder.
 		Update("avatars").
 		Set("deleted_at", squirrel.Expr("NOW()")).
 		Where("id = ? AND deleted_at IS NULL", id).
 		ToSql()
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("build query: %w", err)
 	}
 
 	if _, err := p.pool.Exec(ctx, query, args...); err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("exec query: %w", err)
 	}
 
@@ -147,16 +203,28 @@ func (p *Postgres) DeleteAvatar(ctx context.Context, id uuid.UUID) error {
 }
 
 func (p *Postgres) AddThumbnailKey(ctx context.Context, input AddThumbnailKeyInput) error {
+	ctx, span := p.tracer.Start(ctx, "UPDATE avatars",
+		trace.WithSpanKind(trace.SpanKindClient),
+		trace.WithAttributes(
+			attribute.String("db.system.name", "postgresql"),
+			attribute.String("db.collection.name", "avatars"),
+			attribute.String("db.operation.name", "UPDATE"),
+		),
+	)
+	defer span.End()
+
 	query, args, err := p.builder.
 		Update("avatars").
 		Set("thumbnail_s3_keys", squirrel.Expr("thumbnail_s3_keys || to_jsonb(?::text)", input.S3Key)).
 		Where("id = ? AND deleted_at IS NULL", input.AvatarID).
 		ToSql()
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("build query: %w", err)
 	}
 
 	if _, err := p.pool.Exec(ctx, query, args...); err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("exec query: %w", err)
 	}
 

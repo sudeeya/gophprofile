@@ -13,6 +13,10 @@ import (
 	"uuid"
 
 	"github.com/HugoSmits86/nativewebp"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/image/draw"
 
 	"github.com/sudeeya/gophprofile/internal/repository"
@@ -27,33 +31,49 @@ var thumbnailSizes = []struct{ width, height int }{
 type AvatarThumbnailService struct {
 	repo    AvatarRepository
 	storage AvatarStorage
+	tracer  trace.Tracer
 }
 
 func NewAvatarThumbnailService(repo AvatarRepository, storage AvatarStorage) *AvatarThumbnailService {
+	tracer := otel.Tracer("github.com/sudeeya/gophprofile/internal/services")
+
 	return &AvatarThumbnailService{
 		repo:    repo,
 		storage: storage,
+		tracer:  tracer,
 	}
 }
 
 func (s *AvatarThumbnailService) GenerateThumbnail(ctx context.Context, id uuid.UUID) error {
+	ctx, span := s.tracer.Start(ctx, "generate thumbnail",
+		trace.WithSpanKind(trace.SpanKindInternal),
+		trace.WithAttributes(
+			attribute.String("avatar.id", id.String()),
+		),
+	)
+	defer span.End()
+
 	repoOutput, err := s.repo.GetAvatar(ctx, id)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("get avatar: %w", err)
 	}
 
 	repoMetadataOutput, err := s.repo.GetAvatarMetadata(ctx, id)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("get metadata: %w", err)
 	}
 
 	storageOutput, err := s.storage.GetAvatar(ctx, repoOutput.S3Key)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("get avatar: %w", err)
 	}
 
 	img, format, err := decodeImage(storageOutput.Bytes)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("decode image: %w", err)
 	}
 
@@ -64,6 +84,7 @@ func (s *AvatarThumbnailService) GenerateThumbnail(ctx context.Context, id uuid.
 		)
 
 		if err := encodeImage(&buf, scaled, format); err != nil {
+			span.SetStatus(codes.Error, err.Error())
 			return fmt.Errorf("encode image: %w", err)
 		}
 
@@ -74,6 +95,7 @@ func (s *AvatarThumbnailService) GenerateThumbnail(ctx context.Context, id uuid.
 			Reader:      &buf,
 		})
 		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
 			return fmt.Errorf("put avatar: %w", err)
 		}
 
@@ -81,6 +103,7 @@ func (s *AvatarThumbnailService) GenerateThumbnail(ctx context.Context, id uuid.
 			AvatarID: id,
 			S3Key:    storageOutput.Key,
 		}); err != nil {
+			span.SetStatus(codes.Error, err.Error())
 			return fmt.Errorf("add thumbnail key: %w", err)
 		}
 	}
@@ -131,8 +154,14 @@ func thumbnailFilename(avatarFilename string, width, height int) string {
 }
 
 func (s *AvatarThumbnailService) DeleteAvatar(ctx context.Context, keys []string) error {
+	ctx, span := s.tracer.Start(ctx, "delete avatar",
+		trace.WithSpanKind(trace.SpanKindInternal),
+	)
+	defer span.End()
+
 	for _, key := range keys {
 		if err := s.storage.DeleteAvatar(ctx, key); err != nil {
+			span.SetStatus(codes.Error, err.Error())
 			return fmt.Errorf("delete avatar: %w", err)
 		}
 	}

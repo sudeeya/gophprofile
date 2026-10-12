@@ -5,7 +5,7 @@ services:
     restart: always
     env_file: .env
     ports:
-      - "5432:5432"
+      - 5432:5432
     volumes:
       - postgres-data:/var/lib/postgresql
     healthcheck:
@@ -29,7 +29,7 @@ services:
     image: coollabsio/minio:RELEASE.2025-10-15T17-29-55Z
     env_file: .env
     ports:
-      - "9001:9001"
+      - 9001:9001
     volumes:
       - minio_data:/data
     command: server /data --console-address ":9001"
@@ -44,7 +44,7 @@ services:
     image: rabbitmq:4.3.6-management-alpine
     env_file: .env
     ports:
-      - "15672:15672"
+      - 15672:15672
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
@@ -53,11 +53,74 @@ services:
       timeout: 5s
       retries: 5
 
+  jaeger:
+    container_name: jaeger
+    image: jaegertracing/all-in-one:1.76.0
+    restart: always
+    ports:
+      - 14269:14269
+      - 16686:16686
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:14269" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  prometheus:
+    container_name: prometheus
+    image: prom/prometheus:v3.13.4-distroless
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - 9090:9090
+
+  loki:
+    container_name: loki
+    image: grafana/loki:3.7.8
+    volumes:
+      - ./loki-config.yml:/etc/loki/local-config.yml:ro
+      - loki-data:/loki
+    command: [ "-config.file=/etc/loki/local-config.yml" ]
+    ports:
+      - 3100:3100
+    healthcheck:
+      test: [ "CMD", "/usr/bin/loki", "-health" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:13.2.3-distroless-slim
+    env_file: .env
+    ports:
+      - 3000:3000
+    depends_on:
+      - prometheus
+      - loki
+
+  otel-collector:
+    container_name: otel-collector
+    image: otel/opentelemetry-collector-contrib:0.161.0
+    env_file: .env
+    restart: always
+    command: [ "--config=/etc/otel-collector-config.yaml" ]
+    volumes:
+      - ./otel-collector-config.yml:/etc/otel-collector-config.yaml
+    ports:
+      - 8889:8889
+      - 13133:13133
+    depends_on:
+      jaeger:
+        condition: service_healthy
+
   server:
     container_name: server
     build:
       dockerfile: Dockerfile.server
     env_file: .env
+    environment:
+      OTEL_SERVICE_NAME: server
     ports:
       - "8080:${SERVER_PORT}"
     depends_on:
@@ -69,12 +132,16 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      jaeger:
+        condition: service_healthy
 
   worker:
     container_name: worker
     build:
       dockerfile: Dockerfile.worker
     env_file: .env
+    environment:
+      OTEL_SERVICE_NAME: worker
     depends_on:
       postgres: 
         condition: service_healthy
@@ -89,3 +156,4 @@ volumes:
   postgres-data:
   minio_data:
   rabbitmq_data:
+  loki-data:
