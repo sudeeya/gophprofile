@@ -88,53 +88,17 @@ func (r *RabbitmqPublisher) Ping(_ context.Context) error {
 }
 
 func (r *RabbitmqPublisher) PublishAvatarUploadEvent(ctx context.Context, event AvatarUploadEvent) error {
-	var (
-		operation   = "publish"
-		destination = fmt.Sprintf("%s:%s", ExchangeAvatar, EventKeyAvatarUpload)
-		spanName    = fmt.Sprintf("%s %s", operation, destination)
-		messageId   = uuid.New().String()
-	)
-
-	ctx, span := r.tracer.Start(ctx, spanName,
-		trace.WithSpanKind(trace.SpanKindProducer),
-		trace.WithAttributes(
-			attribute.String("messaging.system", "rabbitmq"),
-			attribute.String("messaging.operation.name", operation),
-			attribute.String("messaging.operation.type", "send"),
-			attribute.String("messaging.destination.name", destination),
-			attribute.String("messaging.rabbitmq.destination.routing_key", EventKeyAvatarUpload),
-			attribute.String("messaging.message.id", messageId),
-		),
-	)
-	defer span.End()
-
-	body, err := json.Marshal(event)
-	if err != nil {
-		span.SetStatus(codes.Error, err.Error())
-		return fmt.Errorf("marshal json: %w", err)
-	}
-
-	headers := make(amqp.Table)
-	otel.GetTextMapPropagator().Inject(ctx, AMQPTableCarrier{Table: headers})
-
-	if err := r.publish(ctx, ExchangeAvatar, EventKeyAvatarUpload, amqp.Publishing{
-		Headers:      headers,
-		DeliveryMode: amqp.Persistent,
-		ContentType:  "application/json",
-		Body:         body,
-		MessageId:    messageId,
-	}); err != nil {
-		span.SetStatus(codes.Error, err.Error())
-		return err
-	}
-
-	return nil
+	return r.publishEvent(ctx, ExchangeAvatar, EventKeyAvatarUpload, event)
 }
 
 func (r *RabbitmqPublisher) PublishAvatarDeleteEvent(ctx context.Context, event AvatarDeleteEvent) error {
+	return r.publishEvent(ctx, ExchangeAvatar, EventKeyAvatarDelete, event)
+}
+
+func (r *RabbitmqPublisher) publishEvent[T any](ctx context.Context, exchange, routingKey string, event T) error {
 	var (
 		operation   = "publish"
-		destination = fmt.Sprintf("%s:%s", ExchangeAvatar, EventKeyAvatarDelete)
+		destination = fmt.Sprintf("%s:%s", exchange, routingKey)
 		spanName    = fmt.Sprintf("%s %s", operation, destination)
 		messageId   = uuid.New().String()
 	)
@@ -146,7 +110,7 @@ func (r *RabbitmqPublisher) PublishAvatarDeleteEvent(ctx context.Context, event 
 			attribute.String("messaging.operation.name", operation),
 			attribute.String("messaging.operation.type", "send"),
 			attribute.String("messaging.destination.name", destination),
-			attribute.String("messaging.rabbitmq.destination.routing_key", EventKeyAvatarDelete),
+			attribute.String("messaging.rabbitmq.destination.routing_key", routingKey),
 			attribute.String("messaging.message.id", messageId),
 		),
 	)
@@ -161,7 +125,7 @@ func (r *RabbitmqPublisher) PublishAvatarDeleteEvent(ctx context.Context, event 
 	headers := make(amqp.Table)
 	otel.GetTextMapPropagator().Inject(ctx, AMQPTableCarrier{Table: headers})
 
-	if err := r.publish(ctx, ExchangeAvatar, EventKeyAvatarDelete, amqp.Publishing{
+	if err := r.publish(ctx, exchange, routingKey, amqp.Publishing{
 		Headers:      headers,
 		DeliveryMode: amqp.Persistent,
 		ContentType:  "application/json",
