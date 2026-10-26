@@ -8,6 +8,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"log/slog"
 	"path/filepath"
 	"strings"
 	"uuid"
@@ -107,6 +108,15 @@ func (s *AvatarThumbnailService) GenerateThumbnail(ctx context.Context, id uuid.
 			return fmt.Errorf("add thumbnail key: %w", err)
 		}
 	}
+
+	slog.InfoContext(ctx, "thumbnails generated",
+		slog.String("avatar.id", id.String()),
+		slog.String("user.id", repoMetadataOutput.UserID),
+		slog.String("file.name", repoMetadataOutput.Filename),
+		slog.String("file.mime_type", repoMetadataOutput.MimeType),
+		slog.Int64("file.size", int64(len(storageOutput.Bytes))),
+		slog.Int("thumbnail.count", len(thumbnailSizes)),
+	)
 
 	return nil
 }

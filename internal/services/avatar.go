@@ -47,13 +47,6 @@ var (
 		},
 		[]string{"status"},
 	)
-
-	storageUsage = promauto.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "avatars_storage_bytes",
-			Help: "Total storage used by avatars",
-		},
-	)
 )
 
 type AvatarService struct {
@@ -176,11 +169,20 @@ func (s *AvatarService) UploadAvatar(ctx context.Context, input UploadAvatarInpu
 	}); err != nil {
 		slog.WarnContext(ctx, "failed to publish avatar upload event",
 			slog.String("avatar.id", repoOutput.ID.String()),
+			slog.String("user.id", input.UserID),
+			slog.String("aws.s3.key", storageOutput.Key),
 			slog.Any("error", err),
 		)
 	}
 
-	storageUsage.Add(float64(size))
+	slog.InfoContext(ctx, "avatar uploaded",
+		slog.String("avatar.id", repoOutput.ID.String()),
+		slog.String("user.id", input.UserID),
+		slog.String("file.name", input.Filename),
+		slog.String("file.mime_type", contentType),
+		slog.Int64("file.size", size),
+		slog.String("aws.s3.key", storageOutput.Key),
+	)
 
 	return domain.Avatar{
 		Metadata: domain.Metadata{
@@ -301,6 +303,12 @@ func (s *AvatarService) DeleteAvatar(ctx context.Context, input DeleteAvatarInpu
 		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("publish event: %w", err)
 	}
+
+	slog.InfoContext(ctx, "avatar deleted",
+		slog.String("avatar.id", input.ID.String()),
+		slog.String("user.id", input.UserID),
+		slog.String("aws.s3.key", metadata.S3Key),
+	)
 
 	return nil
 }
