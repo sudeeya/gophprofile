@@ -31,6 +31,8 @@ exporters:
     compression: "gzip"
     tls:
       insecure: true
+  debug:
+    verbosity: detailed
 
 service:
   extensions:
@@ -49,4 +51,4 @@ service:
       processors:
         - resource/add-job
         - batch
-      exporters: [otlphttp/loki]
+      exporters: [otlphttp/loki, debug]

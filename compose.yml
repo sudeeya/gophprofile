@@ -93,6 +93,10 @@ services:
     container_name: grafana
     image: grafana/grafana:13.2.3-distroless-slim
     env_file: .env
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana-data:/var/lib/grafana
     ports:
       - 3000:3000
     depends_on:
@@ -121,6 +125,10 @@ services:
     env_file: .env
     environment:
       OTEL_SERVICE_NAME: server
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_COMPRESSION: gzip
+      OTEL_EXPORTER_OTLP_INSECURE: true
+      OTEL_RESOURCE_ATTRIBUTES: deployment.environment=development
     ports:
       - "8080:${SERVER_PORT}"
     depends_on:
@@ -142,6 +150,10 @@ services:
     env_file: .env
     environment:
       OTEL_SERVICE_NAME: worker
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+      OTEL_EXPORTER_OTLP_COMPRESSION: gzip
+      OTEL_EXPORTER_OTLP_INSECURE: true
+      OTEL_RESOURCE_ATTRIBUTES: deployment.environment=development
     depends_on:
       postgres: 
         condition: service_healthy
@@ -157,3 +169,4 @@ volumes:
   minio_data:
   rabbitmq_data:
   loki-data:
+  grafana-data:
