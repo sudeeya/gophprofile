@@ -40,7 +40,7 @@ func New(ctx context.Context) (*App, error) {
 		return nil
 	})
 
-	stopLoggerProvider, err := otel.InitLoggerProvider(ctx, "server")
+	stopLoggerProvider, err := otel.InitLoggerProvider(ctx, "worker")
 	if err != nil {
 		return nil, fmt.Errorf("init logger provider: %w", err)
 	}
