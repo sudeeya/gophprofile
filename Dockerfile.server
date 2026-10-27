@@ -1,7 +1,8 @@
 FROM golang:1.27.1-alpine3.24 AS builder
 WORKDIR /app
-COPY . .
+COPY go.mod go.sum ./
 RUN go mod download
+COPY . .
 RUN CGO_ENABLED=0 go build -o server ./cmd/server/main.go
 
 FROM gcr.io/distroless/static-debian13:nonroot

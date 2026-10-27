@@ -6,13 +6,21 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"time"
 	"uuid"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/sudeeya/gophprofile/internal/broker"
 	"github.com/sudeeya/gophprofile/internal/domain"
 	"github.com/sudeeya/gophprofile/internal/repository"
 	"github.com/sudeeya/gophprofile/internal/storage"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const MaxAvatarSize = 10 * 1024 * 1024
@@ -23,10 +31,29 @@ var supportedAvatarFormats = map[string]struct{}{
 	"image/webp": {},
 }
 
+var (
+	uploadsTotal = promauto.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "avatars_uploads_total",
+			Help: "Total number of avatar uploads",
+		},
+		[]string{"status"},
+	)
+
+	uploadDuration = promauto.NewHistogramVec(
+		prometheus.HistogramOpts{
+			Name: "avatars_upload_duration_seconds",
+			Help: "Avatar upload duration",
+		},
+		[]string{"status"},
+	)
+)
+
 type AvatarService struct {
 	repo      AvatarRepository
 	storage   AvatarStorage
 	publisher AvatarEventPublisher
+	tracer    trace.Tracer
 }
 
 type AvatarRepository interface {
@@ -49,10 +76,13 @@ type AvatarEventPublisher interface {
 }
 
 func NewAvatarService(repo AvatarRepository, storage AvatarStorage, publisher AvatarEventPublisher) *AvatarService {
+	tracer := otel.Tracer("github.com/sudeeya/gophprofile/internal/services")
+
 	return &AvatarService{
 		repo:      repo,
 		storage:   storage,
 		publisher: publisher,
+		tracer:    tracer,
 	}
 }
 
@@ -62,19 +92,41 @@ type UploadAvatarInput struct {
 	Reader   io.Reader
 }
 
-func (s *AvatarService) UploadAvatar(ctx context.Context, input UploadAvatarInput) (domain.Avatar, error) {
+func (s *AvatarService) UploadAvatar(ctx context.Context, input UploadAvatarInput) (_ domain.Avatar, err error) {
+	start := time.Now()
+
+	defer func() {
+		status := classifyUploadError(err)
+		uploadsTotal.WithLabelValues(status).Inc()
+		uploadDuration.WithLabelValues(status).Observe(time.Since(start).Seconds())
+	}()
+
+	ctx, span := s.tracer.Start(ctx, "upload avatar",
+		trace.WithSpanKind(trace.SpanKindInternal),
+		trace.WithAttributes(
+			attribute.String("file.name", input.Filename),
+			attribute.String("user.id", input.UserID),
+		),
+	)
+	defer span.End()
+
 	var buf bytes.Buffer
 	size, err := io.Copy(&buf, io.LimitReader(input.Reader, MaxAvatarSize+1))
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return domain.Avatar{}, fmt.Errorf("copy: %w", err)
 	}
 
+	span.SetAttributes(attribute.Int64("file.size", size))
 	if size > MaxAvatarSize {
+		span.SetStatus(codes.Error, ErrAvatarTooLarge.Error())
 		return domain.Avatar{}, ErrAvatarTooLarge
 	}
 
 	contentType := http.DetectContentType(buf.Bytes())
+	span.SetAttributes(attribute.String("file.mime_type", contentType))
 	if _, ok := supportedAvatarFormats[contentType]; !ok {
+		span.SetStatus(codes.Error, ErrFormatNotSupported.Error())
 		return domain.Avatar{}, ErrFormatNotSupported
 	}
 
@@ -85,8 +137,11 @@ func (s *AvatarService) UploadAvatar(ctx context.Context, input UploadAvatarInpu
 		Reader:      &buf,
 	})
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return domain.Avatar{}, fmt.Errorf("put avatar: %w", err)
 	}
+
+	span.SetAttributes(attribute.String("aws.s3.key", storageOutput.Key))
 
 	repoOutput, err := s.repo.CreateAvatar(ctx, repository.CreateAvatarInput{
 		UserID:   input.UserID,
@@ -96,14 +151,38 @@ func (s *AvatarService) UploadAvatar(ctx context.Context, input UploadAvatarInpu
 		Size:     size,
 	})
 	if err != nil {
-		_ = s.storage.DeleteAvatar(ctx, storageOutput.Key)
+		span.SetStatus(codes.Error, err.Error())
+		if err := s.storage.DeleteAvatar(ctx, storageOutput.Key); err != nil {
+			slog.WarnContext(ctx, "failed to rollback avatar in storage",
+				slog.String("aws.s3.key", storageOutput.Key),
+				slog.Any("error", err),
+			)
+		}
 		return domain.Avatar{}, fmt.Errorf("create avatar: %w", err)
 	}
 
-	_ = s.publisher.PublishAvatarUploadEvent(ctx, broker.AvatarUploadEvent{
+	span.SetAttributes(attribute.String("avatar.id", repoOutput.ID.String()))
+
+	if err := s.publisher.PublishAvatarUploadEvent(ctx, broker.AvatarUploadEvent{
 		ID:    repoOutput.ID,
 		S3Key: storageOutput.Key,
-	})
+	}); err != nil {
+		slog.WarnContext(ctx, "failed to publish avatar upload event",
+			slog.String("avatar.id", repoOutput.ID.String()),
+			slog.String("user.id", input.UserID),
+			slog.String("aws.s3.key", storageOutput.Key),
+			slog.Any("error", err),
+		)
+	}
+
+	slog.InfoContext(ctx, "avatar uploaded",
+		slog.String("avatar.id", repoOutput.ID.String()),
+		slog.String("user.id", input.UserID),
+		slog.String("file.name", input.Filename),
+		slog.String("file.mime_type", contentType),
+		slog.Int64("file.size", size),
+		slog.String("aws.s3.key", storageOutput.Key),
+	)
 
 	return domain.Avatar{
 		Metadata: domain.Metadata{
@@ -115,18 +194,33 @@ func (s *AvatarService) UploadAvatar(ctx context.Context, input UploadAvatarInpu
 }
 
 func (s *AvatarService) GetAvatar(ctx context.Context, id uuid.UUID) (domain.Avatar, error) {
+	ctx, span := s.tracer.Start(ctx, "get avatar",
+		trace.WithSpanKind(trace.SpanKindInternal),
+		trace.WithAttributes(
+			attribute.String("avatar.id", id.String()),
+		),
+	)
+	defer span.End()
+
 	repoOutput, err := s.repo.GetAvatar(ctx, id)
 	switch {
 	case errors.Is(err, repository.ErrNotFound):
 		return domain.Avatar{}, ErrAvatarNotFound
 	case err != nil:
+		span.SetStatus(codes.Error, err.Error())
 		return domain.Avatar{}, fmt.Errorf("get avatar: %w", err)
 	}
 
 	storageOutput, err := s.storage.GetAvatar(ctx, repoOutput.S3Key)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return domain.Avatar{}, fmt.Errorf("get avatar: %w", err)
 	}
+
+	span.SetAttributes(
+		attribute.String("aws.s3.key", repoOutput.S3Key),
+		attribute.String("file.mime_type", repoOutput.MimeType),
+	)
 
 	return domain.Avatar{
 		Bytes: storageOutput.Bytes,
@@ -137,13 +231,29 @@ func (s *AvatarService) GetAvatar(ctx context.Context, id uuid.UUID) (domain.Ava
 }
 
 func (s *AvatarService) GetAvatarMetadata(ctx context.Context, id uuid.UUID) (domain.Metadata, error) {
+	ctx, span := s.tracer.Start(ctx, "get avatar metadata",
+		trace.WithSpanKind(trace.SpanKindInternal),
+		trace.WithAttributes(
+			attribute.String("avatar.id", id.String()),
+		),
+	)
+	defer span.End()
+
 	repoOutput, err := s.repo.GetAvatarMetadata(ctx, id)
 	switch {
 	case errors.Is(err, repository.ErrNotFound):
 		return domain.Metadata{}, ErrMetadataNotFound
 	case err != nil:
+		span.SetStatus(codes.Error, err.Error())
 		return domain.Metadata{}, fmt.Errorf("get metadata: %w", err)
 	}
+
+	span.SetAttributes(
+		attribute.String("user.id", repoOutput.UserID),
+		attribute.String("file.name", repoOutput.Filename),
+		attribute.String("file.mime_type", repoOutput.MimeType),
+		attribute.Int("file.size", repoOutput.Size),
+	)
 
 	return domain.Metadata{
 		ID:        repoOutput.ID,
@@ -162,8 +272,18 @@ type DeleteAvatarInput struct {
 }
 
 func (s *AvatarService) DeleteAvatar(ctx context.Context, input DeleteAvatarInput) error {
+	ctx, span := s.tracer.Start(ctx, "delete avatar",
+		trace.WithSpanKind(trace.SpanKindInternal),
+		trace.WithAttributes(
+			attribute.String("avatar.id", input.ID.String()),
+			attribute.String("user.id", input.UserID),
+		),
+	)
+	defer span.End()
+
 	metadata, err := s.repo.GetAvatarMetadata(ctx, input.ID)
 	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("get metadata: %w", err)
 	}
 
@@ -172,6 +292,7 @@ func (s *AvatarService) DeleteAvatar(ctx context.Context, input DeleteAvatarInpu
 	}
 
 	if err := s.repo.DeleteAvatar(ctx, input.ID); err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("delete avatar: %w", err)
 	}
 
@@ -179,8 +300,28 @@ func (s *AvatarService) DeleteAvatar(ctx context.Context, input DeleteAvatarInpu
 		ID:     input.ID,
 		S3Keys: append(metadata.ThumbnailS3Keys, metadata.S3Key),
 	}); err != nil {
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("publish event: %w", err)
 	}
 
+	slog.InfoContext(ctx, "avatar deleted",
+		slog.String("avatar.id", input.ID.String()),
+		slog.String("user.id", input.UserID),
+		slog.String("aws.s3.key", metadata.S3Key),
+	)
+
 	return nil
+}
+
+func classifyUploadError(err error) string {
+	switch {
+	case err == nil:
+		return "success"
+	case errors.Is(err, ErrAvatarTooLarge):
+		return "too_large"
+	case errors.Is(err, ErrFormatNotSupported):
+		return "format_not_supported"
+	default:
+		return "error"
+	}
 }
