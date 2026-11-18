@@ -1,0 +1,48 @@
+{{- range $name, $service := .Values.services }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+spec:
+  selector:
+    matchLabels:
+      app: {{ $name }}
+  template:
+    metadata:
+      labels:
+        app: {{ $name }}
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      containers:
+        - name: {{ $name }}
+          image: {{ $service.image | quote }}
+          {{- with $service.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if eq $name "postgres" }}
+          env:
+            - name: POSTGRES_DB
+              value: {{ $.Values.postgresDatabase | quote }}
+          {{- end }}
+          envFrom:
+            - secretRef:
+                name: {{ $.Values.existingSecret | quote }}
+          ports:
+            - containerPort: {{ $service.port }}
+          readinessProbe:
+            tcpSocket:
+              port: {{ $service.port }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+spec:
+  selector:
+    app: {{ $name }}
+  ports:
+    - port: {{ $service.port }}
+{{- end }}

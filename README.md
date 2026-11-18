@@ -88,3 +88,23 @@ task kube-down
 - `DELETE /api/v1/avatars/{id}`:
 
     curl -X DELETE -H "Host: gophprofile.localhost" "localhost/api/v1/avatars/__{uuid}__" -H "X-User-ID: __{string}__"
+
+### Helm
+
+Build Docker images.
+
+```
+task build-images
+```
+
+Deploy gophprofile in a fresh namespace using `deploy/k8s/secret.yml`.
+
+```
+task helm-up
+```
+
+Remove Helm releases.
+
+```
+task helm-down
+```
