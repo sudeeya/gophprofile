@@ -18,6 +18,10 @@ spec:
         - name: worker
           image: gophprofile-worker:0.1.0
           imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            allowPrivilegeEscalation: false
           envFrom:
             - configMapRef:
                 name: gophprofile-config
