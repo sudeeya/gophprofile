@@ -31,7 +31,7 @@ tasks:
     desc: Deploy gophprofile.
     cmds:
       - kubectl apply -f deploy/k8s/namespace.yml -f deploy/k8s/configmap.yml -f deploy/k8s/secret.yml
-      - kubectl create configmap gophprofile-migrations -n gophprofile --from-file=migrations/
+      - kubectl create configmap gophprofile-migrations -n gophprofile --from-file=migrations/ --dry-run=client -o yaml | kubectl apply -f -
       - kubectl apply -f deploy/k8s/dev/
       - kubectl apply -f deploy/k8s/
       - kubectl wait --for=condition=ready pod -l app=server -n gophprofile --timeout=180s
