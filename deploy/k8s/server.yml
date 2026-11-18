@@ -12,10 +12,22 @@ spec:
       labels:
         app: server
     spec:
+      serviceAccountName: gophprofile
       enableServiceLinks: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
       initContainers:
         - name: goose
           image: ghcr.io/kukymbr/goose-docker:3.28.0
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           envFrom:
             - configMapRef:
                 name: gophprofile-config
@@ -24,14 +36,16 @@ spec:
           volumeMounts:
             - name: migrations
               mountPath: /migrations
+              readOnly: true
       containers:
         - name: server
           image: gophprofile-server:0.1.0
           imagePullPolicy: IfNotPresent
           securityContext:
-            runAsNonRoot: true
-            runAsUser: 65532
             allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           ports:
             - name: http
               containerPort: 8080
