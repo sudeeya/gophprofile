@@ -1,4 +1,5 @@
 .env
+deploy/
 .git/
 .github/
 compose.yml
