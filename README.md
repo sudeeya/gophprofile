@@ -60,6 +60,8 @@ Build Docker images:
 task build-images
 ```
 
+Before deploying, create `deploy/k8s/secret.yml` from the example and replace the values with your own.
+
 Deploy gophprofile:
 ```
 task kube-up
