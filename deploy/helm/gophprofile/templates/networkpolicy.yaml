@@ -1,0 +1,55 @@
+{{- if .Values.networkPolicy.enabled -}}
+{{- $egress := list .Values.networkPolicy.dns -}}
+{{- range .Values.networkPolicy.dependencies -}}
+{{- $egress = append $egress . -}}
+{{- end -}}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-server-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: gophprofile
+      app.kubernetes.io/instance: {{ .Release.Name | quote }}
+      app.kubernetes.io/component: "server"
+  policyTypes: [Ingress]
+  ingress:
+    {{- with .Values.networkPolicy.serverIngress }}
+    - from:
+        {{- toYaml . | nindent 8 }}
+      ports:
+        - port: {{ int $.Values.config.SERVER_PORT }}
+    {{- else }} []
+    {{- end }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-worker-ingress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: gophprofile
+      app.kubernetes.io/instance: {{ .Release.Name | quote }}
+      app.kubernetes.io/component: "worker"
+  policyTypes: [Ingress]
+  ingress: []
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ .Release.Name }}-app-egress
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: gophprofile
+      app.kubernetes.io/instance: {{ .Release.Name | quote }}
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [server, worker]
+  policyTypes: [Egress]
+  egress:
+    {{- toYaml $egress | nindent 4 }}
+{{- end }}

@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gophprofile-config
+  namespace: gophprofile
+data:
+  SERVER_PORT: "8080"
+  SERVER_SHUTDOWN_TIMEOUT: "5s"
+  WORKER_SHUTDOWN_TIMEOUT: "5s"
+  POSTGRES_HOST: "postgres"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "db"
+  GOOSE_DRIVER: "postgres"
+  GOOSE_MIGRATION_DIR: "./migrations"
+  MINIO_ENDPOINT: "minio:9000"
+  RABBITMQ_HOST: "rabbitmq"
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_PUBLISHER_CONFIRMS_RETRY_ATTEMPTS: "5"
+  RABBITMQ_PUBLISHER_CONFIRMS_RETRY_DELAY: "100ms"
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+  OTEL_EXPORTER_OTLP_COMPRESSION: "gzip"
+  OTEL_EXPORTER_OTLP_INSECURE: "true"
+  OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=k8s-local"

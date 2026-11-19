@@ -20,3 +20,36 @@ tasks:
     desc: Stop and remove containers, networks.
     cmds:
       - docker compose down
+
+  build-images:
+    desc: Build server, worker and migration Docker images.
+    cmds:
+      - docker build -f Dockerfile.server -t gophprofile-server:0.1.0 .
+      - docker build -f Dockerfile.worker -t gophprofile-worker:0.1.0 .
+      - docker build -f Dockerfile.migrate -t gophprofile-migrate:0.1.0 .
+
+  kube-up:
+    desc: Deploy gophprofile.
+    cmds:
+      - kubectl apply -f deploy/k8s/namespace.yml -f deploy/k8s/configmap.yml -f deploy/k8s/secret.yml
+      - kubectl create configmap gophprofile-migrations -n gophprofile --from-file=migrations/ --dry-run=client -o yaml | kubectl apply -f -
+      - kubectl apply -f deploy/k8s/dev/
+      - kubectl apply -f deploy/k8s/
+      - kubectl wait --for=condition=ready pod -l app=server -n gophprofile --timeout=180s
+
+  kube-down:
+    desc: Remove gophprofile.
+    cmds:
+      - kubectl delete namespace gophprofile
+
+  helm-up:
+    desc: Install or upgrade gophprofile and its local dependencies with Helm.
+    cmds:
+      - kubectl apply -f deploy/k8s/namespace.yml -f deploy/k8s/secret.yml
+      - helm upgrade --install gp-dev deploy/helm/gophprofile-dev -n gophprofile --wait
+      - helm upgrade --install gp deploy/helm/gophprofile -n gophprofile -f deploy/helm/gophprofile/values-dev.yaml --wait
+
+  helm-down:
+    desc: Remove the gophprofile Helm releases.
+    cmds:
+      - helm uninstall gp gp-dev -n gophprofile --ignore-not-found --wait

@@ -1,0 +1,106 @@
+image:
+  server: gophprofile-server
+  worker: gophprofile-worker
+  migrate: gophprofile-migrate
+  tag: ""
+  pullPolicy: IfNotPresent
+
+server:
+  replicas: 2
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+
+worker:
+  replicas: 1
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  cpu: 70
+  memory: 80
+
+ingress:
+  className: traefik
+  host: gophprofile.localhost
+
+serviceMonitor:
+  enabled: false
+  interval: 30s
+
+networkPolicy:
+  enabled: true
+  serverIngress:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: traefik
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: monitoring
+      podSelector:
+        matchLabels:
+          app.kubernetes.io/name: prometheus
+  dns:
+    to:
+      - namespaceSelector:
+          matchLabels:
+            kubernetes.io/metadata.name: kube-system
+        podSelector:
+          matchLabels:
+            k8s-app: kube-dns
+    ports:
+      - {port: 53, protocol: UDP}
+      - {port: 53, protocol: TCP}
+  dependencies:
+    postgres:
+      to:
+        - podSelector:
+            matchLabels: {app: postgres}
+      ports:
+        - port: 5432
+    minio:
+      to:
+        - podSelector:
+            matchLabels: {app: minio}
+      ports:
+        - port: 9000
+    rabbitmq:
+      to:
+        - podSelector:
+            matchLabels: {app: rabbitmq}
+      ports:
+        - port: 5672
+    otel:
+      to:
+        - podSelector:
+            matchLabels: {app: otel-collector}
+      ports:
+        - port: 4317
+
+config:
+  SERVER_PORT: "8080"
+  SERVER_SHUTDOWN_TIMEOUT: "5s"
+  WORKER_SHUTDOWN_TIMEOUT: "5s"
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: db
+  MINIO_ENDPOINT: minio:9000
+  RABBITMQ_HOST: rabbitmq
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_PUBLISHER_CONFIRMS_RETRY_ATTEMPTS: "5"
+  RABBITMQ_PUBLISHER_CONFIRMS_RETRY_DELAY: 100ms
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+  OTEL_EXPORTER_OTLP_COMPRESSION: gzip
+  OTEL_EXPORTER_OTLP_INSECURE: "true"
+  OTEL_RESOURCE_ATTRIBUTES: deployment.environment=k8s-local
+
+# Supply secrets through an existing Secret or override the secrets map.
+existingSecret: gophprofile-secret
+secrets: {}

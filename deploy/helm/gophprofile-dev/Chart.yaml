@@ -1,0 +1,5 @@
+apiVersion: v2
+name: gophprofile-dev
+description: Local PostgreSQL, MinIO and RabbitMQ for gophprofile
+type: application
+version: 0.1.0
