@@ -97,7 +97,9 @@ Build Docker images.
 task build-images
 ```
 
-Deploy gophprofile in a fresh namespace using `deploy/k8s/secret.yml`.
+Before deploying, copy `deploy/k8s/secret.yml.example` to `deploy/k8s/secret.yml` and replace the example values with your own.
+
+Deploy gophprofile in a fresh namespace.
 
 ```
 task helm-up
